@@ -32,7 +32,7 @@
 
 <script>
     jQuery(document).ready(function () {
-        //绑定otp的click时间用于向后端发送获取手机验证码的请求
+        //绑定otp的click事件用于向后端发送获取手机验证码的请求
         //ajax框架
         $("#getotp").on("click", function () {
 
@@ -54,15 +54,15 @@
                 },
                 //允许跨域请求
                 xhrFields:{withCredentials:true},
+
+                //前端通过POST方式发送请求（输入一个手机号）到后端，由相应的controller进行处理，处理完毕后会返回一个CommonReturnType
+                //里面包含data{status,data}
                 success: function (data) {
 
                     if (data.status == "success") {
                         alert("otp已经发送到您的手机上，请注意查收");
-
                         //当用户getotp操作成功后，需要跳转到register.html界面
                         window.location.href="register.html";
-
-
                     } else {
                         alert("otp发送失败，原因为" + data.data.errMsg);
                     }
