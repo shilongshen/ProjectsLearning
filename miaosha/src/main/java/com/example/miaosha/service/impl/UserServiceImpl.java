@@ -78,11 +78,11 @@ public class UserServiceImpl implements UserService {
         }
 
 //user_password表中的user_id就等于user_info表中的id，取出user_info中的自增主键，并赋值给userModel，
-        userModel.setId(userDO.getId());
+        userModel.setId(userDO.getId());//关键是id为null
 
 //        实现UserModel->userPasswordDO
         userPasswordDO userPasswordDO = convertuserPasswordDOFromModel(userModel);
-//        将userPasswordDO写数数据库中
+//        将userPasswordDO写入数据库中
         userPasswordDOMapper.insertSelective(userPasswordDO);
 
 //

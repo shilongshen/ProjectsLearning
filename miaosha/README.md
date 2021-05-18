@@ -1061,6 +1061,8 @@ getotp.html?_ijt=cqdae6hmhq9069c9s4muooakju:1 Access to XMLHttpRequest at 'http:
   </insert>
 ```
 
+注意要使用`keyProperty="id" useGeneratedKeys="true"`，这样才能够保证进行主键自增
+
 ```xml
 <insert id="insertSelective" parameterType="com.example.miaosha.dataobject.UserDO" keyProperty="id" useGeneratedKeys="true">
     insert into user_info
@@ -2594,6 +2596,7 @@ getitem.html
 //用户下单的交易模型
 public class OrderModel {
     //交易单号，例如2019052100001212，使用string类型
+    //交易订单号，是有对应的生成规则的，设置为主键，但是不设计为自增
     private String id;
 
     //购买的用户id
@@ -2684,11 +2687,38 @@ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount) th
 
     //3.订单入库
 
+//        设置订单（orderModel）的各个属性
+        OrderModel orderModel = new OrderModel();
+        orderModel.setUserId(userId);
+        orderModel.setItemId(itemId);
+        orderModel.setAmount(amount);
+        orderModel.setItemPrice(itemModel.getPrice());
+        orderModel.setOrderPrice(itemModel.getPrice().multiply(new BigDecimal(amount)));
+
+//生成交易订单号
+
+
+        OrderDO orderDO = convertFromOrderModel(orderModel);//将orderModel转换为orderDO
+        orderDOMapper.insertSelective(orderDO);//将orderDO存入数据库表中
+
     //4.返回前端
 }
+
+
+//将OrderModel转换为orderDO
+ private OrderDO convertFromOrderModel(OrderModel orderModel) {
+        if (orderModel == null) {
+            return null;
+        }
+        OrderDO orderDO = new OrderDO();
+        BeanUtils.copyProperties(orderModel, orderDO);
+        return orderDO;
+    }
 ```
 
 3.落单减库存
+
+需要对item_stock表进行操作
 
 * ItemService
 
@@ -2702,7 +2732,9 @@ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount) th
   ```java
      @Override
       @Transactional
+  //    库存扣减,根据商品id和商品购买数量扣减商品库存
       public boolean decreaseStock(Integer itemId, Integer amount) throws BusinessException {
+          //        返回值为影响的条目数，如果sql语句执行失败，返回值为0
           int affectedRow = itemStockDOMapper.decreaseStock(itemId, amount);
           if (affectedRow > 0) {
               //更新库存成功
@@ -2721,11 +2753,10 @@ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount) th
       int decreaseStock(@Param("itemId") Integer itemId, @Param("amount") Integer amount);
   ```
 
-* ItemStockMapper.xml
+* ItemStockMapper.xml中进行修改
 
   ```xml
     <update id="decreaseStock">
-  
       update item_stock
       set stock = stock-#{amount}
       where item_id = #{item_id} and stock>=#{amount}
@@ -2735,7 +2766,7 @@ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount) th
 
 4.生成交易流水号
 
-新建一个数据库
+新建一个数据库`sequence_info`，这张表创建的意义为初始化一些序列，并且这些序列的初始值为0，每当我从这个序列中获取一个数据的时候，就加上对应的一个步长。
 
 ```sql
 CREATE TABLE `sequence_info`  (
@@ -2779,40 +2810,260 @@ INSERT INTO `sequence_info` VALUES ('order_info', 0, 1);
 添加方法
 
 ```java
+//SequenceDOMapper.java中添加
 SequenceDO getSequenceByName(String name);
 ```
 
 
 
 ```java
+//生成交易订单号，假设订单号为16位，由时间+自增序列+分库分表位
 private String generateOrderNo() {
-    //订单有16位
-    StringBuilder stringBuilder = new StringBuilder();
-    //前8位为时间信息，年月日
-    LocalDateTime now = LocalDateTime.now();
-    String nowDate = now.format(DateTimeFormatter.ISO_DATE).replace("-", "");
-    stringBuilder.append(nowDate);
+        StringBuilder stringBuilder = new StringBuilder();
+        //1.假设订单号为16位，前8位为年月日，
+        LocalDateTime now = LocalDateTime.now();
+        String nowDate = now.format(DateTimeFormatter.ISO_DATE).replace("-", "");
+        stringBuilder.append(nowDate);
 
-    //中间6位为自增序列
-    //获取当前sequence
-    int sequence = 0;
-    SequenceDO sequenceDO = sequenceDOMapper.getSequenceByName("order_info");
+        // 2.中间6位为自增序列，
+//        获取当前sequence
+        int sequence = 0;
+        SequenceDO sequenceDO = sequenceDOMapper.getSequenceByName("order_info");
+        sequence = sequenceDO.getCurrentValue();
+//        按照step增加CurrentValue
+        sequenceDO.setCurrentValue(sequenceDO.getCurrentValue() + sequenceDO.getStep());
+//        写入数据库
+        sequenceDOMapper.updateByPrimaryKeySelective(sequenceDO);
+//        将当前sequence转换为string
+        String sequenceStr = String.valueOf(sequence);
+        for (int i = 0; i < 6 - sequenceStr.length(); i++) {
+            stringBuilder.append(0);//不足6位用0拼接
+        }
+        stringBuilder.append(sequenceStr);
+    //存在的问题：自增序列没有设置最大值，很有可能超过6位，所以在对应的数据库表中应该设置最大值
 
-    sequence = sequenceDO.getCurrentValue();
-    sequenceDO.setCurrentValue(sequenceDO.getCurrentValue() + sequenceDO.getStep());
-    sequenceDOMapper.updateByPrimaryKeySelective(sequenceDO);
-    //拼接
-    String sequenceStr = String.valueOf(sequence);
-    for (int i = 0; i < 6 - sequenceStr.length(); i++) {
-        stringBuilder.append(0);
+        // 3.最后两位为分库分表位,00-99,,暂时为00
+        stringBuilder.append("00");
+    
+        return stringBuilder.toString();
     }
-    stringBuilder.append(sequenceStr);
+```
 
-    //最后两位为分库分表位,暂时不考虑
-    stringBuilder.append("00");
+存在的问题：
 
-    return stringBuilder.toString();
+①自增序列没有设置最大值，很有可能超过6位，所以在对应的数据库表sequence_info中应该设置最大值。
+
+②因为对应的`service`是标注了`@Transactional`，如果对应的sql操作`generateOrderNo`之后的操作失败了(例如`orderDOMapper.insertSelective(orderDO);`)会进行整个事务的回滚，因为将`generateOrderNo()`中的sql也包含在对应的`@Transactional`标注内，因此`generateOrderNo()`中的sql也会被回滚。此时下一个事务拿到的还是这个序列值，但是针对序列的定义，就算是事务失败回滚了，这个序列也不应该再被重复的使用，这是为了保证全局唯一性的策略（就算当前交易失败了，这个交易失败的订单号也不能够被重新使用）。
+
+解决方式：在`generateOrderNo`加上标注`@Transactional(propagation = Propagation.REQUIRES_NEW)`，这样就能保证`generateOrderNo`开启了一个新的事务，只要这段代码执行完毕就会提交，对应的序列都被使用掉了，而不会由于`createOrder`的`@Transactional`进行回滚。
+
+```java
+ @Transactional//表示事务操作
+ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount){
+     //...
+         //生成交易订单号
+        orderModel.setId(generateOrderNo());
+
+        OrderDO orderDO = convertFromOrderModel(orderModel);//将orderModel转换为orderDO
+        orderDOMapper.insertSelective(orderDO);//将orderDO存入数据库表中
+    // ...
+ }
+```
+
+```java
+Propagation propagation() default Propagation.REQUIRED;
+//...
+public enum Propagation {
+    REQUIRED(0),//必须要开启一个事务并且在这个事务当中，如果一段代码已经在一个事务中了就不必重新开启新的事务
+    SUPPORTS(1),
+    MANDATORY(2),
+    REQUIRES_NEW(3),//无论我的代码是否在一个事务中，都会重新开启一个事务
+    NOT_SUPPORTED(4),
+    NEVER(5),
+    NESTED(6);
+//...
 }
+```
+
+```java
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+    private String generateOrderNo() {
+        //...
+    }
+```
+
+商品详情页面：
+
+getitem.html
+
+```html
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="static/assets/global/plugins/bootstrap/css/bootstrap.min.css" rel="stylesheet" type="text/css"/>
+    <link href="static/assets/global/css/components.css" rel="stylesheet" type="text/css"/>
+    <link href="static/assets/admin/pages/css/login.css" rel="stylesheet" type="text/css"/>
+    <script src="static/assets/global/plugins/jquery-1.11.0.min.js" type="text/javascript"></script>
+    <title>商品详情</title>
+</head>
+<body class="login">
+<div class="content">
+    <h3 class="form-title">商品详情</h3>
+    <div id="promoStartDateContainer" class="form-group">
+        <label style="color:blue" id="promoStatus" class="control-label"></label>
+        <div>
+            <label style="color:red" class="control-label" id="promoStartDate" />
+        </div>
+    </div>
+    <div class="form-group">
+        <div>
+            <label class="control-label" id="title" />
+        </div>
+    </div>
+    <div class="form-group">
+        <div>
+            <img style="width:200px;height:auto;" id="imgUrl">
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="control-label">商品描述</label>
+        <div>
+            <label class="control-label" id="description" />
+        </div>
+    </div>
+    <div id="normalPriceContainer" class="form-group">
+        <label class="control-label">商品价格</label>
+        <div>
+            <label class="control-label" id="price" />
+        </div>
+    </div>
+    <div id="promoPriceContainer" class="form-group">
+        <label style="color:red" class="control-label">秒杀价格</label>
+        <div>
+            <label style="color:red" class="control-label" id="promoPrice" />
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="control-label">商品库存</label>
+        <div>
+            <label class="control-label" id="stock" />
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="control-label">商品销量</label>
+        <div>
+            <label class="control-label" id="sales" />
+        </div>
+    </div>
+    <div class="form-actions">
+        <button class="btn blue" id="createOrder" type="submit">
+            立即购买
+        </button>
+    </div>
+</div>
+</body>
+
+<script>
+    var g_itemVO = {};
+    $(document).ready(function() {
+        // 获取商品详情
+        $.ajax({
+            type: "GET",
+            url: "http://localhost:8080/item/get",
+            data: {
+                "id": getParam("id"),
+            },
+            xhrFields:{
+                withCredentials:true
+            },
+            success: function(data) {
+                if (data.status == "success") {
+                    g_itemVO = data.data;
+                    reloadDom();
+                    setInterval(reloadDom, 1000);
+                } else {
+                    alert("获取信息失败，原因为" + data.data.errMsg);
+                }
+            },
+            error: function(data) {
+                alert("获取信息失败，原因为" + data.responseText);
+            }
+        });
+
+        $("#createOrder").on("click", function() {
+            $.ajax({
+                type: "POST",
+                url: "http://localhost:8080/order/createorder",
+                contentType: "application/x-www-form-urlencoded",
+                data: {
+                    "itemId": g_itemVO.id,
+                    "promoId": g_itemVO.promoId,
+                    "amount": 1,//暂时写死为一件
+                },
+                xhrFields:{
+                    withCredentials:true
+                },
+                success: function(data) {
+                    if (data.status == "success") {
+                        alert("下单成功");
+                        window.location.reload();<!--刷新页面-->
+                    } else {
+                        alert("下单失败，原因为" + data.data.errMsg);
+                        //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
+                        if (data.data.errCode == 200003) {
+                            window.location.href="login.html";
+                        }
+                    }
+                },
+                error: function(data) {
+                    alert("下单失败，原因为" + data.responseText);
+                }
+            });
+        });
+    });
+
+    function reloadDom() {
+        $("#title").text(g_itemVO.title);
+        $("#imgUrl").attr("src", g_itemVO.imgUrl);
+        $("#description").text(g_itemVO.description);
+        $("#price").text(g_itemVO.price);
+        $("#stock").text(g_itemVO.stock);
+        $("#sales").text(g_itemVO.sales);
+        if (g_itemVO.promoStatus == 1) {
+            // 秒杀活动还未开始
+            console.log(g_itemVO.startDate);
+            var startTime = g_itemVO.startDate.replace(new RegExp("-", "gm"), "/");
+            startTime = (new Date(startTime)).getTime();
+            var nowTime = Date.parse(new Date());
+            var delta = (startTime - nowTime) / 1000;
+            if (delta <= 0) {
+                // 活动开始了
+                g_itemVO.promoStatus = 2;
+                reloadDom();
+            }
+            $("#promoStartDate").text("秒杀活动将于："+g_itemVO.startDate+" 开始售卖 倒计时："+delta+"  秒");
+            $("#promoPrice").text(g_itemVO.promoPrice);
+            $("#createOrder").attr("disabled", true);
+        } else if (g_itemVO.promoStatus == 2) {
+            // 秒杀活动进行中
+            $("#promoStartDate").text("秒杀正在进行中");
+            $("#promoPrice").text(g_itemVO.promoPrice);
+            $("#createOrder").attr("disabled", false);
+            $("#normalPriceContainer").hide();
+        }
+    }
+    function getParam(paramName) {
+        paramValue = "", isFound = !1;
+        if (this.location.search.indexOf("?") == 0 && this.location.search.indexOf("=") > 1) {
+            arrSource = unescape(this.location.search).substring(1, this.location.search.length).split("&"), i = 0;
+            while (i < arrSource.length && !isFound)
+                arrSource[i].indexOf("=") > 0 && arrSource[i].split("=")[0].toLowerCase() == paramName.toLowerCase() && (paramValue = arrSource[i].split("=")[1], isFound = !0), i++
+        }
+        return paramValue == "" && (paramValue = null), paramValue
+    }
+</script>
+
+</html>
 ```
 
 5.销量增加
@@ -2890,26 +3141,45 @@ public OrderModel createOrder(Integer userId, Integer itemId, Integer amount) th
 }
 ```
 
-7.controller层
+7.OrderController层
 
 ```java
-//封装下单请求
-@RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
-@ResponseBody
-public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
-                                    @RequestParam(name = "amount") Integer amount) throws BusinessException {
+public class OrderController extends BaseController {
+    @Autowired
+    private OrderService orderService;
+    @Autowired
+    private HttpServletRequest httpServletRequest;
 
-    //获取用户登录信息
-    Boolean isLogin = (Boolean) httpServletRequest.getSession().getAttribute("IS_LOGIN");
-    if (isLogin == null || !isLogin.booleanValue()) {
-        throw new BusinessException(EmBusinessError.USER_NOT_LOGIN, "用户还未登录，不能下单");
+
+    //封装下单请求
+    @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "amount") Integer amount) throws BusinessException {
+
+//        在UserController将登录凭证加入到用户登录成功的session内，在Session中设置IS_LOGIN，LOGIN_USER
+//        因此只需要从用户的Session中获取道对应的用户信息即可,
+
+        //根据IS_LOGIN判断用户是否登录
+        Boolean isLogin = (Boolean) httpServletRequest.getSession().getAttribute("IS_LOGIN");
+        if (isLogin == null || !isLogin) {
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);
+        }
+        //获取用户的登录信息userModel  LOGIN_USER
+        UserModel userModel = (UserModel) httpServletRequest.getSession().getAttribute("LOGIN_USER");
+
+        if (userModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "userModel等于null");
+        }
+
+
+//创建订单,只有用户登录了才能够进行下单，用户的登录信息是在当前Session中获取的
+        OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, amount);
+
+
+        return CommonReturnType.create(null);
     }
-    UserModel userModel = (UserModel) httpServletRequest.getSession().getAttribute("LOGIN_USER");
-
-
-    OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, amount);
-
-    return CommonReturnType.create(null);
+//
 }
 ```
 
@@ -2978,7 +3248,7 @@ CREATE TABLE `promo`  (
        selectByExampleQueryId="false" ></table>
 ```
 
-##	6.2 秒杀模型管理——活动模型与商品模型结合
+###	6.2 秒杀模型管理——活动模型与商品模型结合
 
 1.service
 

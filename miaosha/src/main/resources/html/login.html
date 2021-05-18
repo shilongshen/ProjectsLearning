@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <title>用户登录</title>
     <!--    引入css-->
     <link href="static/assets/global/plugins/bootstrap/css/bootstrap.min.css" rel="stylesheet" type="text/css"/>
     <link href="/static/assets/global/css/components.css" rel="stylesheet" type="text/css"/>
@@ -84,6 +84,8 @@
                 success: function (data) {
                     if (data.status == "success") {
                         alert("登录成功");
+                        //如果登录成功，直接跳转到商品列表页
+                        window.location.href="listitem.html";
                     } else {
                         alert("登录失败，原因为" + data.data.errMsg);
                     }

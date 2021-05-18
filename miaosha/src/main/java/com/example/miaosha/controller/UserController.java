@@ -63,8 +63,6 @@ public class UserController extends BaseController {
         this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
         // 并且返回给前端一个正确的信息
         return CommonReturnType.create(null);
-
-
     }
 
 
