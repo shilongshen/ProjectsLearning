@@ -5,6 +5,8 @@ import com.example.miaosha.error.BusinessException;
 import com.example.miaosha.response.CommonReturnType;
 import com.example.miaosha.service.ItemService;
 import com.example.miaosha.service.model.ItemModel;
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -55,6 +57,19 @@ public class ItemController extends BaseController {
         }
         ItemVO itemVO = new ItemVO();
         BeanUtils.copyProperties(itemModel, itemVO);//复制后ItemVO为null？
+
+        if (itemModel.getPromoModel() != null) {
+//如果有正在进行的或即将进行的秒杀活动
+//            将待显示的活动信息进行相应的设置
+            itemVO.setPromoStatus(itemModel.getPromoModel().getStatus());
+            itemVO.setPromoId(itemModel.getPromoModel().getItemId());
+            itemVO.setPromoPrice(itemModel.getPromoModel().getPromoItemPrice());
+            itemVO.setStartDate(itemModel.getPromoModel().getStartDate().toString(DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss")));
+        } else {
+            itemVO.setPromoStatus(0);
+        }
+
+
         return itemVO;
     }
 

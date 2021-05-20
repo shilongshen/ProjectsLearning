@@ -797,7 +797,7 @@ public class UserController extends BaseController{
 
 - 利用已有的模板来快速构建页面
 
-bootstrap
+- Metronic：基于bootstrap的付费ui模版
 
 采用前后端分离的思想，建立一个html文件夹，引入static文件夹
 
@@ -3237,6 +3237,10 @@ CREATE TABLE `promo`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8 COLLATE = utf8_bin ROW_FORMAT = Compact;
 ```
 
+创建表中报错：`Invalid default value for start_date`，这是MySQL中默认DATE 不能全部为0的原因
+
+[解决方法](https://blog.csdn.net/u011499484/article/details/80415417)
+
 4.mybatis逆向工程
 
 ```xml
@@ -3382,6 +3386,198 @@ private ItemVO convertVOFromModel(ItemModel itemModel) {
 
 3.修改前端界面
 
+规定：当商品存在秒杀活动的时候，则规定该商品只有在秒杀开始后才可以进行下单，之前不可以进行下单
+
+getitem.html
+
+```html
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="static/assets/global/plugins/bootstrap/css/bootstrap.min.css" rel="stylesheet" type="text/css"/>
+    <link href="static/assets/global/css/components.css" rel="stylesheet" type="text/css"/>
+    <link href="static/assets/admin/pages/css/login.css" rel="stylesheet" type="text/css"/>
+    <script src="static/assets/global/plugins/jquery-1.11.0.min.js" type="text/javascript"></script>
+    <title>商品详情</title>
+</head>
+<body class="login">
+<div class="content">
+    <h3 class="form-title">商品详情</h3>
+
+    <div id="promoStartDateContainer" class="form-group">
+        <label style="color:blue" id="promoStatus" class="control-label"></label>
+        <div>
+            <label style="color:red" class="control-label" id="promoStartDate" />
+        </div>
+    </div>
+
+    <div class="form-group">
+        <div>
+            <label class="control-label" id="title" />
+        </div>
+    </div>
+
+    <div class="form-group">
+        <div>
+            <img style="width:200px;height:auto;" id="imgUrl">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="control-label">商品描述</label>
+        <div>
+            <label class="control-label" id="description" />
+        </div>
+    </div>
+
+    <div id="normalPriceContainer" class="form-group">
+        <label class="control-label">商品价格</label>
+        <div>
+            <label class="control-label" id="price" />
+        </div>
+    </div>
+
+    <div id="promoPriceContainer" class="form-group">
+        <label style="color:red" class="control-label">秒杀价格</label>
+        <div>
+            <label style="color:red" class="control-label" id="promoPrice" />
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="control-label">商品库存</label>
+        <div>
+            <label class="control-label" id="stock" />
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="control-label">商品销量</label>
+        <div>
+            <label class="control-label" id="sales" />
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn blue" id="createOrder" type="submit">
+            立即购买
+        </button>
+    </div>
+
+</div>
+</body>
+
+<script>
+    var g_itemVO = {};
+    $(document).ready(function() {
+        // 获取商品详情
+        $.ajax({
+            type: "GET",
+            url: "http://localhost:8080/item/get",
+            data: {
+                "id": getParam("id"),
+            },
+            xhrFields:{
+                withCredentials:true
+            },
+            success: function(data) {
+                if (data.status == "success") {
+                    g_itemVO = data.data;
+                    reloadDom();
+                    setInterval(reloadDom, 1000);//定时器
+                } else {
+                    alert("获取信息失败，原因为" + data.data.errMsg);
+                }
+            },
+            error: function(data) {
+                alert("获取信息失败，原因为" + data.responseText);
+            }
+        });
+
+        $("#createOrder").on("click", function() {
+            $.ajax({
+                type: "POST",
+                url: "http://localhost:8080/order/createorder",
+                contentType: "application/x-www-form-urlencoded",
+                data: {
+                    "itemId": g_itemVO.id,
+                    "promoId": g_itemVO.promoId,
+                    "amount": 1,//暂时写死为一件
+                },
+                xhrFields:{
+                    withCredentials:true
+                },
+                success: function(data) {
+                    if (data.status == "success") {
+                        alert("下单成功");
+                        window.location.reload();<!--刷新页面-->
+                    } else {
+                        alert("下单失败，原因为" + data.data.errMsg);
+                        //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
+                        if (data.data.errCode == 200003) {
+                            window.location.href="login.html";
+                        }
+                    }
+                },
+                error: function(data) {
+                    alert("下单失败，原因为" + data.responseText);
+                }
+            });
+        });
+    });
+
+    function reloadDom() {
+        $("#title").text(g_itemVO.title);
+        $("#imgUrl").attr("src", g_itemVO.imgUrl);
+        $("#description").text(g_itemVO.description);
+        $("#price").text(g_itemVO.price);
+        $("#stock").text(g_itemVO.stock);
+        $("#sales").text(g_itemVO.sales);
+        if (g_itemVO.promoStatus == 1) {
+            // 秒杀活动还未开始
+            console.log(g_itemVO.startDate);
+            var startTime = g_itemVO.startDate.replace(new RegExp("-", "gm"), "/");
+            startTime = (new Date(startTime)).getTime();
+            var nowTime = Date.parse(new Date());
+            var delta = (startTime - nowTime) / 1000;
+            if (delta <= 0) {
+                // 活动开始了
+                g_itemVO.promoStatus = 2;
+                reloadDom();
+            }
+            $("#promoStartDate").text("秒杀活动将于："+g_itemVO.startDate+" 开始售卖 倒计时："+delta+"  秒");
+            $("#promoPrice").text(g_itemVO.promoPrice);
+            //规定：当商品存在秒杀活动的时候，则规定该商品只有在秒杀开始后才可以进行下单，之前不可以进行下单
+            $("#createOrder").attr("disabled", true);
+        } else if (g_itemVO.promoStatus == 2) {
+            // 秒杀活动进行中
+            $("#promoStartDate").text("秒杀正在进行中");
+            $("#promoPrice").text(g_itemVO.promoPrice);
+            $("#createOrder").attr("disabled", false);
+            $("#normalPriceContainer").hide();//在秒杀状态下将普通价格隐藏
+        }else if (g_itemVO.promoStatus == 0) {
+        //    说明该商品没有秒杀活动
+        //    将秒杀信息隐藏
+            $("#promoStartDateContainer").hide();
+            $("#promoPriceContainer").hide();
+        }
+    }
+    function getParam(paramName) {
+        paramValue = "", isFound = !1;
+        if (this.location.search.indexOf("?") == 0 && this.location.search.indexOf("=") > 1) {
+            arrSource = unescape(this.location.search).substring(1, this.location.search.length).split("&"), i = 0;
+            while (i < arrSource.length && !isFound)
+                arrSource[i].indexOf("=") > 0 && arrSource[i].split("=")[0].toLowerCase() == paramName.toLowerCase() && (paramValue = arrSource[i].split("=")[1], isFound = !0), i++
+        }
+        return paramValue == "" && (paramValue = null), paramValue
+    }
+</script>
+
+</html>
+```
+
+
+
 4.修改OrderModel
 
 增加秒杀价格字段
@@ -3449,3 +3645,38 @@ OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer 
 
 进行测试
 
+# 课程总结
+
+- 学习使用SpringBoot+MyBatis完成JavaWeb项目的搭建
+- 学习一个电商秒杀系统的基本流程以及代码实现
+
+使用了前后端分离的一个设计方式，在前端使用了html,css,jquery以及Metronic模板来完成用户注册、登录以及商品展示，下单交易，秒杀倒计时的基本前端功能。
+
+在接入层使用了springMvc的controller定义对应的view object和返回了通用的对象，并且在controller层通过了通用的异常处理方式，结合通用的返回对象，返回了对应的前后端分离的json的data模型。
+
+在业务层中，使用了对应的MyBatis接入以及model层（领域模型的概念）完成了对应的用户服务、商品服务、交易服务以及活动服务。
+
+并且在数据层使用了@Transactional标签来完成事务的切面，使用dao来完成数据库的相关操作。
+
+使用MySQL数据库来完成数据源的操作。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210520111601.png" style="zoom:67%;" />
+
+出错调试：
+- 先确认问题点：环境问题、ui展示问题、接口问题、服务问题、配置问题
+- 断点调试，日志调试
+- 互联网寻找答案
+
+拓展思维：
+
+- 目前的项目是针对单商品、单库存、单活动的，那多商品、多库存、多活动模型怎么实现？
+
+遗留问题：
+- 如何支撑亿级别秒杀流量？
+- 如何发现容量问题
+- 如何使得系统水平拓展
+- 查询效率低下
+- 活动开始前页面被疯狂刷新
+- 库存行锁问题
+- 下单操作多，缓慢
+- 浪涌流量如何解决

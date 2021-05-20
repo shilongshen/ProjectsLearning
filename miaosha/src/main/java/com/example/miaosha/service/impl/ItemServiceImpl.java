@@ -7,7 +7,9 @@ import com.example.miaosha.dataobject.ItemStockDO;
 import com.example.miaosha.error.BusinessException;
 import com.example.miaosha.error.EmBusinessError;
 import com.example.miaosha.service.ItemService;
+import com.example.miaosha.service.PromoService;
 import com.example.miaosha.service.model.ItemModel;
+import com.example.miaosha.service.model.PromoModel;
 import com.example.miaosha.validator.ValidationResult;
 import com.example.miaosha.validator.ValidatorImpl;
 import org.springframework.beans.BeanUtils;
@@ -27,6 +29,8 @@ public class ItemServiceImpl implements ItemService {
     private ItemDOMapper itemDOMapper;
     @Autowired
     private ItemStockDOMapper itemStockDOMapper;
+    @Autowired
+    private PromoService promoService;
 
     private ItemDO convertItemDoFromItemModel(ItemModel itemModel) {
         if (itemModel == null) {
@@ -104,6 +108,16 @@ public class ItemServiceImpl implements ItemService {
 
 //        将dataobject转换为model
         ItemModel itemModel = convertModelFromDataObject(itemDO, itemStockDO);
+
+//      获取活动商品信息
+//        通过itemId获得promoModel
+        PromoModel promoModel = promoService.getPromoByItemId(itemModel.getId());
+//        判断该商品是否存在促销活动，判断的依据为promoModel不为空且promoModel的status不为3
+        if (promoModel != null && promoModel.getStatus() != 3) {
+            //将itemModel中的promoModel进行设置
+            itemModel.setPromoModel(promoModel);
+        }
+
         return itemModel;
     }
 
@@ -128,7 +142,7 @@ public class ItemServiceImpl implements ItemService {
     @Transactional
 //    考虑落单成功，商品的销量就增加
     public void insreaseSales(Integer itemId, Integer amount) {
-        itemDOMapper.insreaseSales(itemId,amount);
+        itemDOMapper.insreaseSales(itemId, amount);
 
     }
 

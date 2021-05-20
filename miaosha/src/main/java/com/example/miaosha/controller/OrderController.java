@@ -28,6 +28,7 @@ public class OrderController extends BaseController {
     @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
     @ResponseBody
     public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "promoId",required = false) Integer promoId,
                                         @RequestParam(name = "amount") Integer amount) throws BusinessException {
 
 //        在UserController将登录凭证加入到用户登录成功的session内，在Session中设置IS_LOGIN，LOGIN_USER
@@ -47,7 +48,7 @@ public class OrderController extends BaseController {
 
 
 //创建订单,只有用户登录了才能够进行下单，用户的登录信息是在当前Session中获取的
-        OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, amount);
+        OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, promoId,amount);
 
 
         return CommonReturnType.create(null);
