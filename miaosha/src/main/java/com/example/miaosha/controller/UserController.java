@@ -102,7 +102,6 @@ public class UserController extends BaseController {
 
     }
 
-
     /**
      * 定义MD5加密方式
      */
@@ -113,7 +112,6 @@ public class UserController extends BaseController {
 //        加密字符串
         String encode = base64Encoder.encode(str.getBytes(StandardCharsets.UTF_8));
         return encode;
-
     }
 
     //    用户获取otp短信接口

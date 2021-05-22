@@ -3645,7 +3645,7 @@ OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer 
 
 进行测试
 
-# 课程总结
+# 课程总结1
 
 - 学习使用SpringBoot+MyBatis完成JavaWeb项目的搭建
 - 学习一个电商秒杀系统的基本流程以及代码实现
@@ -3680,3 +3680,20 @@ OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer 
 - 库存行锁问题
 - 下单操作多，缓慢
 - 浪涌流量如何解决
+
+
+
+---
+
+---
+
+---
+
+更新说明：之前项目的延申，[聚焦Java性能优化 打造亿级流量秒杀系统](https://coding.imooc.com/class/338.html)
+
+![](https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210522085653.png)
+
+
+
+
+

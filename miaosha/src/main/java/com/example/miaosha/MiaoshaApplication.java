@@ -6,12 +6,14 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.ModelAndView;
 
 @SpringBootApplication(scanBasePackages = {"com.example.miaosha"})//
 @MapperScan("com.example.miaosha.dao")
-@RestController
+@Controller
 
 public class MiaoshaApplication {
 
@@ -21,13 +23,8 @@ public class MiaoshaApplication {
 
     @RequestMapping("/")
     public String home() {
-        UserDO selectByPrimaryKey = userDOMapper.selectByPrimaryKey(1);
-        if (selectByPrimaryKey == null) {
-            return "用户对象不存在";
-        }
-        return selectByPrimaryKey.getName();
+        return "index";
     }
-
 
     public static void main(String[] args) {
 //        System.out.println("hello world!");

@@ -23,8 +23,6 @@ import java.util.stream.Collectors;
 public class ItemController extends BaseController {
     @Autowired
     private ItemService itemService;
-
-
     /**
      * 创建商品的controller
      */
@@ -49,7 +47,6 @@ public class ItemController extends BaseController {
         ItemVO itemVO = converVOFromModel(itemModelForReturn);
         return CommonReturnType.create(itemVO);
     }
-
     //    viewObject（展示给用户的属性）和model层的定义是不一样的
     private ItemVO converVOFromModel(ItemModel itemModel) {
         if (itemModel == null) {
@@ -68,8 +65,6 @@ public class ItemController extends BaseController {
         } else {
             itemVO.setPromoStatus(0);
         }
-
-
         return itemVO;
     }
 
@@ -97,7 +92,6 @@ public class ItemController extends BaseController {
             return itemVO;
         }).collect(Collectors.toList());
         return CommonReturnType.create(itemVOList);
-
     }
 
 }
