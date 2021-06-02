@@ -3695,5 +3695,812 @@ OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer 
 
 
 
+# 第7章 云端部署，性能压测
+
+从本地调试到云端上线的必经之路
+
+目标：
+
+- 项目云端/私有部署
+- jmeter性能压测
+- 如何发现系统瓶颈问题 
+
+## 本地部署
+
+**说明**：在本地进行部署，程序是在window上编写的，将其上传到一个本地Linux服务器上
+
+常用命令
+
+```shell
+ip:10.249.159.48
+文件传输：
+scp 本地文件 ssl@10.249.159.48:远程路径
+```
+
+1. 本地Linux服务器需要安装jdk1.8，MySQL
+
+```shell
+版本
+(base) ssl@ssl-H310M-S2:~$ mysql -V
+mysql  Ver 14.14 Distrib 5.7.33, for Linux (x86_64) using  EditLine wrapper
+(base) ssl@ssl-H310M-S2:~$ java -version
+java version "1.8.0_291"
+Java(TM) SE Runtime Environment (build 1.8.0_291-b10)
+Java HotSpot(TM) 64-Bit Server VM (build 25.291-b10, mixed mode)
+```
+
+2.将本地数据库进行备份、上传以及恢复
+```shell
+#切换到MySQL的bin目录下，使用mysqldump备份本地数据库
+mysqldump -u root -p --databases miaosha > D:\Projects\IdeaProjects\ProjectsLearning\miaosha.sql
+#将本地备份的miaosha.sql上传到Linux服务器
+D:\Projects\IdeaProjects\ProjectsLearning>scp miaosha.sql ssl@10.249.159.48:/home/ssl/IdeaProjects/ProjectLearning
+#将Linuxx服务器上的miaosha.sql进行恢复
+mysql -u root -p
+source miaosha.sql;
+```
+
+3.将程序进行打包（jar）
+
+在pom.xml中添加
+
+```xml
+<!--添加这一段依赖，否则在运行jar的时候会报错-->
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.activation</groupId>
+            <artifactId>activation</artifactId>
+            <version>1.1.1</version>
+        </dependency>
+```
+
+```shel
+报错Caused by: java.lang.NoClassDefFoundError: javax/xml/bind/ValidationException
+参考https://blog.csdn.net/sihai12345/article/details/80744012
+```
+
+
+
+```shell
+#进入项目根目录
+mvn clean package
+cd target 
+#测试
+java -jar miaosha-0.0.1-SNAPSHOT.jar
+```
+
+4.将jar上传到Linux服务器
+
+```shell
+scp *** ***
+#在服务器测试
+java -jar ***
+#本地运行
+http://10.249.159.48:8080/
+```
+
+5.设置外挂配置文件
+
+在同名的情况下，外挂配置文件的优先级更高
+
+application.properties
+
+6.启动脚本
+
+新建deploy.sh
+
+```shell
+nohup java -jar miaosha-0.0.1-SNAPSHOT.jar --spring.config.addition-location=application.properties
+```
+
+nohup  #启动应用程序，即便控制台退出，应用程序也不会退出
+
+```shell
+#启动
+>./deploy.sh &
+>nohup: 忽略输入并把输出追加到'nohup.out'
+#原本打印在控制台上的信息打印到nohup.out
+#进程终止
+kill -9  进程号PID
+```
+
+## jmeter性能压测
+
+- 线程组
+- Http请求
+- 查看结果树
+- 聚合报告
+
+下载[地址](https://jmeter.apache.org/download_jmeter.cgi)
+
+  ```markdown
+  ## 运行
+  ## Running JMeter
+  1. Change to the `bin` directory
+  2. Run the `jmeter` (Un\*x) or `jmeter.bat` (Windows) file.
+  ```
+
+注意：测试时要保证服务器上的程序是跑起来的
+
+1.新建线程组
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523094206.png" style="zoom:50%;" />
+
+参数：100个线程，在10秒内启动，每个线程循环调用10次
+
+2.在线程组下添加Http请求
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523101819.png" style="zoom:80%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523101919.png" style="zoom:80%;" />
+
+3.在线程组下添加查看结果树
+
+
+
+4.在线程组下添加聚合报告
+
+![](https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523102653.png)
+
+总体：
+
+![](https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523094613.png)
+
+- 当能够承受的并发数越高并且返回的速度越快，tps就越大，性能就越好
+
+```shell
+> ps -ef |grep java  #查看进程
+> ssl      22772 22771  1 10:13 pts/40   00:00:13 java -jar miaosha-0.0.1-SNAPSHOT.jar --spring.config.addition-location=application.properties
+
+> pstree -p 22772  #查看进程中的线程数
+> 
+            
+> pstree -p 22772 | wc -l  #查看进程下的线程数量
+> 32
+
+> top -H  #查看机器性能，如下图所示
+
+```
+
+![](https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523200849.png)
+
+当线程组中的线程数以及循环调用次数增加时会发现服务端的性能无法承受，Http请求报错。
+
+### 优化Tomcat配置
+
+查看spring boot配置
+
+- spring-configuration-metadata.json文件下查看各个结点的配置
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523201618.png" style="zoom: 33%;" />
+
+在服务端自定义的application.properties中编写,**调整服务器支持的进程数**
+
+```properties
+server.tomcat.accept-count=1000
+server.tomcat.threads.max=800
+server.tomcat.threads.min-spare=100
+```
+
+- 定制化内嵌tomcat开发
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523204626.png" style="zoom:33%;" />
+
+新建`config`包，新建WebServerConfiguration.java
+
+```java
+/**
+ * 当Spring容器中没有TomcatEmbeddedServletContainerFactory这个bean时，会把此bean加载进来
+ */
+@Component
+public class WebServerConfiguration implements WebServerFactoryCustomizer<ConfigurableWebServerFactory> {
+    @Override
+    public void customize(ConfigurableWebServerFactory factory) {
+//使用对应工厂类提供给我们的接口定制化我们的tomcat connector
+        ((TomcatServletWebServerFactory) factory).addConnectorCustomizers(
+                new TomcatConnectorCustomizer() {
+                    @Override
+                    public void customize(Connector connector) {
+                        Http11NioProtocol protocol = (Http11NioProtocol) connector.getProtocolHandler();
+//                        定制化KeepAliveTimeout,设置30S内没有请求则服务端自动断开keepalive
+                        protocol.setKeepAliveTimeout(300000);
+//                        当客户端发送超过10000个请求则自动断开keep alive链接
+                        protocol.setMaxKeepAliveRequests(10000);
+
+                    }
+                }
+
+        );
+
+    }
+}
+```
+
+### 优化方向
+
+响应时间变长，tps上不去
+
+- 线程数不是越多越好，太多的话花费在线程调度上的时间会太长
+- 等待队列也不是越长越好
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523211331.png" style="zoom:33%;" />
+
+- 主键索引为聚簇索引，查询效率最高
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523211519.png" style="zoom:33%;" />
+
+- 数据插入操作的效率相对其他操作效率较低
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210523211904.png" style="zoom:33%;" />
+
+# 第8章 分布式拓展
+
+目标：
+
+- nginx反向代理负载均衡
+- 分布式会话管理
+- 使用redis实现分布式会话存储
+
+## nginx反向代理负载均衡
+
+使用`top -H`可以查看
+
+单机容量存在问题：cpu使用率增高，内存占用增加，网络带宽使用增加
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210524204748.png" style="zoom:33%;" />
+
+解决方案：
+
+- MySQL数据库开放远端连接
+- 服务端水平对称部署
+- 验证访问
+
+改进之前的部署：
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210524205235.png" style="zoom:40%;" />
+
+改进后的部署结构：
+
+需要4台服务器来做水平拓展，一台用于nginx，一台用于MySQL，另外两台用于Java应用服务
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210524205431.png" style="zoom:44%;" />
+
+注意
+
+1.因为此时数据库存放的服务器和jar包存放的服务器已经不是同一台了，所以需要将存放jar的服务器上的`application.properties`进行相应的更改
+
+```properties
+spring.datasource.url=jdbc:mysql://“存放数据库服务器的ip地址”:3306/miaosha?serverTimezone=GMT%2B8
+```
+
+2.MySQL默认只允许本地程序使用密码进行访问，可以使用以下命令使得所有服务器都可以使用密码进行数据库的访问
+
+```sql
+grant all privileges on *.* to root@'%' identified by 'root';
+flush privileges;
+```
+
+此时部署在两台不同服务器上的Java应用都可以访问部署在另外一台服务器上的数据库，完成了MySQL数据库开放远端连接以及服务器水平拓展。
+
+### nginx
+
+nginx的主要功能：
+
+- 使用nginx作为web服务器
+- 使用nginx作为dong动静分离服务器，可以把动态页面和静态页面交由不同的服务器来解析，减少服务器压力。
+- 使用nginx作为反向代理服务器，由反向代理服务器去选择目标服务器,对外就一个服务器，暴露的是反向代理服务器地址，隐藏了真实服务器IP地址.
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210524213055.png" style="zoom:50%;" />
+
+
+
+H5(访问静态资源)访问resources目录下的时候会在nginx中进行寻找
+
+创建`gethost.js`
+
+```js
+//在所有文件内引入该js文件，替换掉发送ajax请求路径
+var g_host="localhost:8080";
+```
+
+将所有的localhost:8080替换为"+g_host+"
+
+将远端服务器地址配置化，一旦将项目部署到服务器上，可以调整g_host
+
+```html
+$.ajax({
+                type: "POST",
+                //contextType->consumes,对应的一个后端需要消费一个contextType名字
+                contextType: "application/x-www-form-urlencoded",
+                //url: "http://localhost:8080/item/create",
+				url: "http://"+g_host+"/item/create",
+                //传递参数
+            //...   
+});
+```
+
+实现动静分离，将静态资源部署nginx上
+
+> OpenResty(又称：ngx_openresty) 是一个基于 NGINX 的可伸缩的 Web 平台
+
+使用[OpenResty](https://www.runoob.com/w3cnote/openresty-intro.html)
+
+默认安装到`/usr/local/openresty`
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210525161626.png" style="zoom:50%;" />
+
+#### 将nginx指定为web服务器
+
+- location 结点path：指定url映射key
+- location结点内容：root指定location path 后对应的根路径，index执行默认的访问页
+- sbin/nginx -c conf/nginx.conf命令启动nginx服务器
+  - 修改配置后直接使用命令sbin/nginx -s reload 进行nginx服务器的重启
+
+使用sbin/nginx -c conf/nginx.conf，启动访问`ip:80`
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210525163320.png" style="zoom:50%;" />
+
+
+
+完成前端资源的部署，以使得nginx容器能够作为一个web服务器使用。
+
+- 将前端的代码上传到/usr/local/openresty/nginx/html，使用nginx作为静态资源服务器
+
+- nginx.conf内容解析以及修改
+
+```properties
+#user  nobody;
+worker_processes  1;  #工作进程
+
+#error_log  logs/error.log;
+#error_log  logs/error.log  notice;
+#error_log  logs/error.log  info;
+
+#pid        logs/nginx.pid;
+
+
+events {
+    worker_connections  1024;  #可接收的工作链接
+}
+
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+    #                  '$status $body_bytes_sent "$http_referer" '
+    #                  '"$http_user_agent" "$http_x_forwarded_for"';
+
+    #access_log  logs/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    #keepalive_timeout  0;
+    keepalive_timeout  65;
+
+    #gzip  on;
+
+    server {
+        listen       80;
+        server_name  localhost;
+
+        #charset koi8-r;
+        #charset koi8-r;
+
+        #access_log  logs/host.access.log  main;
+
+#不需要所有location访问都进入html路径，只需要将/resources/目录下的结构进入resources下的HTML静态资源路径
+        location /resources/ {
+            #root   html;
+            #alias表示当location的规则命中了/resources/，将其替换为/usr/local/openresty/nginx/html/resources/
+            alias   /usr/local/openresty/nginx/html/resources/; 
+            index  index.html index.htm;
+        }
+
+        #error_page  404              /404.html;
+
+        # redirect server error pages to the static page /50x.html
+        #
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+
+        # proxy the PHP scripts to Apache listening on 127.0.0.1:80
+        #
+        #location ~ \.php$ {
+        #    proxy_pass   http://127.0.0.1;
+        #}
+
+        # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000
+        #
+        #location ~ \.php$ {
+        #    root           html;
+        #    fastcgi_pass   127.0.0.1:9000;
+        #    fastcgi_index  index.php;
+        #    fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+        #    include        fastcgi_params;
+        #}
+
+        # deny access to .htaccess files, if Apache's document root
+        # concurs with nginx's one
+        #
+        #location ~ /\.ht {
+             #
+        #location ~ /\.ht {
+        #    deny  all;
+        #}
+    }
+
+
+    # another virtual host using mix of IP-, name-, and port-based configuration
+    #
+    #server {
+    #    listen       8000;
+    #    listen       somename:8080;
+    #    server_name  somename  alias  another.alias;
+
+    #    location / {
+    #        root   html;
+    #        index  index.html index.htm;
+    #    }
+    #}
+
+
+    # HTTPS server
+    #
+    #server {
+    #    listen       443 ssl;
+    #    server_name  localhost;
+
+    #    ssl_certificate      cert.pem;
+    #    ssl_certificate_key  cert.key;
+
+    #    ssl_session_cache    shared:SSL:1m;
+    #    ssl_session_timeout  5m;
+
+    #    ssl_ciphers  HIGH:!aNULL:!MD5;
+    #    ssl_prefer_server_ciphers  on;
+
+    #    location / {
+    #        root   html;
+    #        index  index.html index.htm;
+    #        root   html;
+    #        index  index.html index.htm;
+    #    }
+    #}
+
+}
+```
+
+新建resources目录，将文件进行移动
+
+![](https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210525171727.png)
+
+重启nginx服务器sbin/nginx -s reload，访问http://10.250.191.96/resources/register.html
+
+#### nginx动静分离服务器
+
+- location节点path特定resources：静态资源路径
+- location节点其他路径：动态资源用
+- 开启tomcat access log验证
+
+nginx.conf内容解析以及修改
+
+`cd /usr/local/openresty`
+
+```properties
+#添加,指定需要进行反向代理服务器的IP地址-》存放Havana程序的服务器
+#添加,
+location / {
+#当路径访问到除了resources外的路径时，nginx不处理请求，而是反向代理到backend_server
+#backend_server的IP地址由上面的upstream指出，即Java程序服务器的地址
+	proxy_pass http://backend_server;
+	proxy_set_header Host $http_host:$proxy_port;
+	proxy_set_header X-Real-IP $remote_addr;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+访问<http://10.250.191.96/item/get?id=10>
+
+开启tomcat access log验证
+
+修改配置文件
+
+```properties
+server.tomcat.accesslog.enabled=true
+server.tomcat.accesslog.directory=/...
+server.tomcat.accesslog.pattern=%h %l %u %t "%r" %s %b %D 
+```
+
+默认nginx与后端服务器是短连接（使用的是HTTP1.0，默认不支持keepalive），修改为长连接，减少网络建联的消耗。
+
+#### nginx 高性能原因
+
+- epoll多路复用，解决了IO阻塞回调的问题
+- master worker 进程模型，可以完成平滑的重启
+- 协程机制，将每个用户的请求对应到线程中的协程种，然后再协程中使用epoll多路复用机制来完成同步调用开发。
+
+##### epoll多路复用
+
+- Java bio模型，阻塞进程式
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210601201701.png" style="zoom:50%;" />
+
+- Linux select模型，变更触发轮询查找，有1024数量上限
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210601201758.png" style="zoom:50%;" />
+
+- epoll模型，变更触发回调直接读取，理论上无上限
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210601202044.png" style="zoom:50%;" />
+
+
+
+##### master worker 进程模型
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210601202146.png" style="zoom: 50%;" />
+
+master进程是父进程，worker进程是子进程，master可以管理worker进程，worker进程次才是处理客户端连接的进程。 
+
+每一个worker进程全都是单线程的
+
+##### 协程机制
+
+- 依附线程的内存模型，切换开销小
+- 遇阻塞及归还执行权，代码同步
+- 无需加锁
+
+## 会话管理
+
+- 基于cookie传输sessionId：Java tomcat容器session实现
+
+存在的问题是，用户认证之后，服务端做认证记录，如果认证的记录被保存在内存中的话，这意味着用户下次请求还必须要请求在**这台**服务器上,这样才能拿到授权的资源，这样在分布式的应用上，相应的限制了负载均衡器的能力。这也意味着限制了应用的扩展能力。
+
+- 基于token传输类似sessionId，Java代码session实现
+
+基于token（令牌）的鉴权机制类似于http协议也是无状态的，**它不需要在服务端去保留用户的认证信息或者会话信息。这就意味着基于token认证机制的应用不需要去考虑用户在哪一台服务器登录了**，这就为应用的扩展提供了便利。
+
+
+
+###  解决方式：分布式会话
+
+1.基于cookie传输sessionId：Java tomcat容器session实现迁移到redis
+
+  将session存放到redis中，而不是存放在某一台特定的Java程序服务器中。这样就可以解决用户的请求必须在某一台特定的服务器上才能够进行认证。
+  具体来说，在用户认证的时候是将user model放在session中进行认证。通过将session放在redis中就可以完成单点登录。
+
+引入依赖pom.xml
+
+```xml
+<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+<!--            <version>1.2.6</version>-->
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+<!--            <version>2.0.4</version>-->
+        </dependency>
+```
+
+[安装redis](https://redis.io/download)
+
+application.properties中添加
+
+```properties
+#配置springboot对redis的依赖
+spring.redis.host=127.0.0.1
+spring.redis.port=6379
+spring.redis.database=10
+#设置jedis连接池
+spring.redis.jedis.pool.max-active=50
+spring.redis.jedis.pool.min-idle=20
+```
+
+修改UserModel实现序列化，因为存入redis中数据需要进行序列化
+
+```java
+public class UserModel implements Serializable{
+ //...   
+}
+```
+
+运行程序，并查询redis,可以看到已经将session放入到redis中
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210601220112.png" style="zoom: 67%;" />
+
+接下来验证这套方案是否可以满足分布式环境下的要求。
+
+本地项目打包并上传到云端服务器。
+
+在另外一台服务器上启动redis
+
+在Java程序服务器上修改`application.properties`，
+
+```properties
+#添加
+spring.redis.host="redis服务器的ip地址"
+```
+
+
+
+2.基于token传输类似sessionId，Java代码session实现迁移到redis
+
+修改UserController
+
+```java
+ @Autowired
+    private RedisTemplate redisTemplate;
+
+//    用户登录接口
+    @RequestMapping(value = "/login", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+public CommonReturnType login(@RequestParam(name = "telphone") String telphone
+            , @RequestParam(name = "password") String password) throws BusinessException, UnsupportedEncodingException, NoSuchAlgorithmException {
+
+//...修改以下代码
+    
+
+//        修改为如果用户登录验证成功将对应的登录信息和登录凭证一起存入redis中
+//        生成登录凭证token，UUID
+        String uuidToken = UUID.randomUUID().toString();
+        uuidToken = uuidToken.replace("-", "");
+//        建立token和用户登录态之间的联系
+        redisTemplate.opsForValue().set(uuidToken, userModel);//redis中uuidToken就是key，userModel就是value这样一来只要redis中存在uuidToken这个key，就惹味userModel存在
+        redisTemplate.expire(uuidToken, 1, TimeUnit.HOURS);//设置超时时间为1小时
+
+//        现在不需要IS_LOGIN了
+//        this.httpServletRequest.getSession().setAttribute("IS_LOGIN", true);
+//        //如果用户登录成功，就将userModel放到对应用户的session
+//        this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
+        // 并且返回给前端一个正确的信息
+
+
+//        下发了token
+        return CommonReturnType.create(uuidToken);
+    }
+```
+
+修改login.html
+
+```html
+//...
+$.ajax({
+                type: "POST",
+                //contextType->consumes,对应的一个后端需要消费一个contextType名字
+                contextType: "application/x-www-form-urlencoded",
+                url: "http://"+g_host+"/user/login",
+                //传递参数
+                data: {
+                    "telphone": $("#telphone").val(),
+                    "password": password,
+                },
+                //允许跨域请求
+                xhrFields: {withCredentials: true},
+                /**
+                 * 只要被服务端正确处理，会进入success
+                 * 如果比如由于网络原因，会进入error
+                 * */
+                success: function (data) {
+                    if (data.status == "success") {
+                        alert("登录成功");
+                        //如果登录成功，直接跳转到商品列表页
+
+					//如果登录成功，在data中拿到token，并将其存储
+                        var token=data.data;
+                        window.localStorage["token"]=token;//将token存储，本质上是一个key-value，key是token，value是token
+
+
+                        window.location.href="listitem.html";
+                    } else {
+                        alert("登录失败，原因为" + data.data.errMsg);
+                    }
+                },
+                error: function (data) {
+                    alert("登录失败，原因为" + data.responseText);
+                },
+            });
+```
+
+修改getitem.html
+
+```html
+//...
+$("#createOrder").on("click", function() {
+
+           //当点击下单按钮的时，从window.localStorage拿到token，如果token为null，直接跳转到登录页
+            var token=window.localStorage["token"];
+            if(token==null){
+                alert("没有登录，不能下单");
+                window.location.href="login.html";//如果没有登录就直接跳到登录页
+                return false;
+            }
+            $.ajax({
+                type: "POST",
+                //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
+                url: "http://"+g_host+"/order/createorder?token="+token,
+                contentType: "application/x-www-form-urlencoded",
+                data: {
+                    "itemId": g_itemVO.id,
+                    "promoId": g_itemVO.promoId,
+                    "amount": 1,//暂时写死为一件
+                },
+//...
+```
+
+修改orderController
+
+```java
+@Autowired
+    private RedisTemplate redisTemplate;
+
+//封装下单请求
+    @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "promoId", required = false) Integer promoId,
+                                        @RequestParam(name = "amount") Integer amount) throws BusinessException {
+
+//        在UserController将登录凭证加入到用户登录成功的session内，在Session中设置IS_LOGIN，LOGIN_USER
+//        因此只需要从用户的Session中获取道对应的用户信息即可,
+
+        //根据IS_LOGIN判断用户是否登录
+//        现在不用IS_LOGIN进行判断了
+//        Boolean isLogin = (Boolean) httpServletRequest.getSession().getAttribute("IS_LOGIN");
+//        获取token
+        String token = httpServletRequest.getParameterMap().get("token")[0];
+        if (token == null) {
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);
+        }
+//通过token获取userModel
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get(token);
+
+
+//        if (isLogin == null || !isLogin) {
+//            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);
+//        }
+        //获取用户的登录信息userModel  LOGIN_USER
+//        UserModel userModel = (UserModel) httpServletRequest.getSession().getAttribute("LOGIN_USER");
+
+        if (userModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户登录过期，userModel等于null");
+        }
+
+
+//创建订单,只有用户登录了才能够进行下单，用户的登录信息是在当前Session中获取的
+        OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, promoId, amount);
+
+
+        return CommonReturnType.create(null);
+    }
+
+```
+
+测试
+
+讨论：
+
+在后序的操作中会尽量的避免使用cookie传输session的方式，并不是说cookie传输session的方式不安全或不好，。而是对于一个企业级别的应用来说，不仅仅要支持HTML页面，也要支持移动设备，例如小程序，Android等，并不是所有的都支持cookie这种方式传输session；网络的情况下对应的cookie规则是否会被改变，这些都是后端开发人员无法控制的。因此大型企业应用中一般都是使用基于token传输类似sessionId这种方式来完成分布式会话。
+
+
+
+## 本章小结
+
+- 使用nginx反向代理来完成分布式web应用的扩展
+- 使用分布式session来完成分布式会话管理
+- 使用redist解决分布式会话管理问题
+
+# 第9章 查询优化技术之多级缓存
+
 
 

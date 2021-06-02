@@ -1,10 +1,12 @@
 package com.example.miaosha.validator;
 
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
+@Component
 public class ValidationResult {
     //    校验结果是否有错
     private boolean hasErrors=false;

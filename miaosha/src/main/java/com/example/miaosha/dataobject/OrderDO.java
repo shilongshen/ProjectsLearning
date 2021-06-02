@@ -1,5 +1,8 @@
 package com.example.miaosha.dataobject;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class OrderDO {
     /**
      *

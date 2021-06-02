@@ -12,10 +12,12 @@ import org.apache.catalina.User;
 import org.apache.tomcat.util.security.MD5Encoder;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
-import sun.misc.BASE64Encoder;
+//import sun.misc.BASE64Encoder;
+import org.apache.commons.codec.binary.Base64;
 
 import javax.servlet.http.HttpServletRequest;
 import java.io.UnsupportedEncodingException;
@@ -25,6 +27,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Controller("user")
 @RequestMapping("/user")
@@ -37,6 +41,9 @@ public class UserController extends BaseController {
 
     @Autowired
     private HttpServletRequest httpServletRequest;
+
+    @Autowired
+    private RedisTemplate redisTemplate;
 
 
     //    用户登录接口
@@ -58,11 +65,25 @@ public class UserController extends BaseController {
 
 //     将登录凭证加入到用户登录成功的session内，假设用户是单点的session登录
         //如果用户的session中有IS_LOGIN标识，就将其设置为已经登录成功
-        this.httpServletRequest.getSession().setAttribute("IS_LOGIN", true);
-        //如果用户登录成功，就将userModel放到对应用户的session
-        this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
+
+//        修改为如果用户登录验证成功将对应的登录信息和登录凭证一起存入redis中
+//        生成登录凭证token，UUID
+        String uuidToken = UUID.randomUUID().toString();
+        uuidToken = uuidToken.replace("-", "");
+
+//        建立token和用户登录态之间的联系
+        redisTemplate.opsForValue().set(uuidToken, userModel);//redis中uuidToken就是key，userModel就是value这样一来只要redis中存在uuidToken这个key，就惹味userModel存在
+        redisTemplate.expire(uuidToken, 1, TimeUnit.HOURS);//设置超时时间为1小时
+
+//        现在不需要IS_LOGIN了
+//        this.httpServletRequest.getSession().setAttribute("IS_LOGIN", true);
+//        //如果用户登录成功，就将userModel放到对应用户的session
+//        this.httpServletRequest.getSession().setAttribute("LOGIN_USER", userModel);
         // 并且返回给前端一个正确的信息
-        return CommonReturnType.create(null);
+
+
+//        下发了token
+        return CommonReturnType.create(uuidToken);
     }
 
 
@@ -108,10 +129,12 @@ public class UserController extends BaseController {
     public String EncoderByMd5(String str) throws NoSuchAlgorithmException, UnsupportedEncodingException {
 //        确定一个计算方法
         MessageDigest md5 = MessageDigest.getInstance("MD5");
-        BASE64Encoder base64Encoder = new BASE64Encoder();
+
+        //        BASE64Encoder base64Encoder = new BASE64Encoder();
 //        加密字符串
-        String encode = base64Encoder.encode(str.getBytes(StandardCharsets.UTF_8));
-        return encode;
+//        String encode = base64Encoder.encode(str.getBytes(StandardCharsets.UTF_8));
+
+        return Base64.encodeBase64String(str.getBytes());
     }
 
     //    用户获取otp短信接口

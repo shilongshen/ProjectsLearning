@@ -1,7 +1,7 @@
 package com.example.miaosha.service.model;
 
 import org.joda.time.DateTime;
-import org.omg.CORBA.PRIVATE_MEMBER;
+//import org.omg.CORBA.PRIVATE_MEMBER;
 
 import java.math.BigDecimal;
 

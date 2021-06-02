@@ -19,6 +19,7 @@ public class ValidatorImpl implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
 //        将hibernate validator通过工厂的初始化方式使其实例化
         this.validator = Validation.buildDefaultValidatorFactory().getValidator();
+
     }
 
 //    实现校验方法并返回校验结果
