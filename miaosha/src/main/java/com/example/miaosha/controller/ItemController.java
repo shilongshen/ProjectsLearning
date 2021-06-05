@@ -3,17 +3,20 @@ package com.example.miaosha.controller;
 import com.example.miaosha.controller.viewobject.ItemVO;
 import com.example.miaosha.error.BusinessException;
 import com.example.miaosha.response.CommonReturnType;
+import com.example.miaosha.service.CacheService;
 import com.example.miaosha.service.ItemService;
 import com.example.miaosha.service.model.ItemModel;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Controller
@@ -23,6 +26,11 @@ import java.util.stream.Collectors;
 public class ItemController extends BaseController {
     @Autowired
     private ItemService itemService;
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired
+    private CacheService cacheService;
+
     /**
      * 创建商品的controller
      */
@@ -47,6 +55,7 @@ public class ItemController extends BaseController {
         ItemVO itemVO = converVOFromModel(itemModelForReturn);
         return CommonReturnType.create(itemVO);
     }
+
     //    viewObject（展示给用户的属性）和model层的定义是不一样的
     private ItemVO converVOFromModel(ItemModel itemModel) {
         if (itemModel == null) {
@@ -75,7 +84,27 @@ public class ItemController extends BaseController {
     @RequestMapping(value = "/get", method = {RequestMethod.GET})
     @ResponseBody
     public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
-        ItemModel itemModel = itemService.getItemById(id);
+        ItemModel itemModel = null;
+
+//1.先到本地缓存中找对应的商品
+        itemModel = (ItemModel) cacheService.getCommonCache("item_" + id);
+
+//2.如果本地缓存中不存在，到redis缓存中找
+        if (itemModel == null) {
+//      根据商品的id到redis内获取itemModel--->在redis中key为item_id,value为itemModel
+            itemModel = (ItemModel) redisTemplate.opsForValue().get("item_" + id);
+//3.如果redis中不存在对应的itemModel，则访问下游service，到数据库中找
+            if (itemModel == null) {
+                itemModel = itemService.getItemById(id);
+//            并设置itemModel到redis内
+                redisTemplate.opsForValue().set("item_" + id, itemModel);
+//            设置redis缓存的失效时间
+                redisTemplate.expire("item_" + id, 10, TimeUnit.MINUTES);
+            }
+//            填充本地缓存
+            cacheService.setCommonCache("item_" + id, itemModel);
+        }
+
         ItemVO itemVO = converVOFromModel(itemModel);
         return CommonReturnType.create(itemVO);
     }

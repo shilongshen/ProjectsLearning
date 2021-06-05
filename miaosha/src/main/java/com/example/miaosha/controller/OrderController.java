@@ -40,7 +40,7 @@ public class OrderController extends BaseController {
         //根据IS_LOGIN判断用户是否登录
 //        现在不用IS_LOGIN进行判断了
 //        Boolean isLogin = (Boolean) httpServletRequest.getSession().getAttribute("IS_LOGIN");
-//        获取token
+//        获取tokenit
         String token = httpServletRequest.getParameterMap().get("token")[0];
         if (token == null) {
             throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);

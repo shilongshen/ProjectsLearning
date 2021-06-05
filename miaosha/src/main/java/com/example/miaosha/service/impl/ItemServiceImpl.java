@@ -143,7 +143,6 @@ public class ItemServiceImpl implements ItemService {
 //    考虑落单成功，商品的销量就增加
     public void insreaseSales(Integer itemId, Integer amount) {
         itemDOMapper.insreaseSales(itemId, amount);
-
     }
 
     private ItemModel convertModelFromDataObject(ItemDO itemDO, ItemStockDO itemStockDO) {

@@ -3275,7 +3275,7 @@ public class PromoServiceImpl implements PromoService {
 
 
 
-    //根据iremId获取即将开始的或者正在进行的活动
+    //根据itemId获取即将开始的或者正在进行的活动
     @Override
     public PromoModel getPromoByItemId(Integer itemId) {
 
@@ -4356,6 +4356,10 @@ public CommonReturnType login(@RequestParam(name = "telphone") String telphone
         String uuidToken = UUID.randomUUID().toString();
         uuidToken = uuidToken.replace("-", "");
 //        建立token和用户登录态之间的联系
+    /**
+        * 注意新建token后token会存储在redis以及本地浏览器中，注意清除本地浏览器中的token,
+        * */
+    
         redisTemplate.opsForValue().set(uuidToken, userModel);//redis中uuidToken就是key，userModel就是value这样一来只要redis中存在uuidToken这个key，就惹味userModel存在
         redisTemplate.expire(uuidToken, 1, TimeUnit.HOURS);//设置超时时间为1小时
 
@@ -4440,6 +4444,8 @@ $("#createOrder").on("click", function() {
 
 修改orderController
 
+
+
 ```java
 @Autowired
     private RedisTemplate redisTemplate;
@@ -4502,5 +4508,440 @@ $("#createOrder").on("click", function() {
 
 # 第9章 查询优化技术之多级缓存
 
+本章目标
 
+- 掌握多级缓存的定义
+- 掌握redis缓存，本地缓存
+- 掌握热点nginx lua缓存
+
+缓存设计的原则
+
+- 用快速存取设备，用内存
+- 将缓存推到离用户最近的地方
+- 脏缓存清理
+
+多级缓存
+
+- redis缓存
+- 热点内存本地缓存
+- nginx proxy cache 缓存
+- nginx lua缓存
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605204114.png" style="zoom:33%;" />
+
+> 性能越高的缓存就是离用户越近的地方。
+>
+> 但是离用户越近的缓存更占用系统分布式的资源、且更不容易被更新，因此应用需要忍受脏读
+
+redis缓存
+
+redis缓存是具备将数据存储到磁盘的能力的
+
+常将其作为集中式缓存中间件，并将其作为key-value内存级别数据库存储，且是易失性存储
+
+两种模式：
+
+- 单机版
+- sentinal哨兵模式
+
+有多台redis服务器，它们之间是主从（master，slave）关系，有一台redis哨兵。哨兵会同时监听多台redis服务；应用服务器会向redis哨兵发送ask信号，redis哨兵返回一个信号告诉哪一台是redis master，这样应用服务器就会访问redis master。如果redis master出现了故障，redis哨兵redis master进行更改，同时会将返回一个信号告诉应用服务器redis master已经被更改了，这样应用服务器就会访问新的redis master。（应用服务器只和redis master进行连接，并且只需要感知redis哨兵即可）
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210602222405.png" style="zoom:33%;" />
+
+- 集群cluster模式
+
+多台redis
+
+redis集群，网状连接，会自动竞选出哪一个为master 哪一个为slave。应用服务器只需要连接任何一台redis，既可以得到redis集群中任何一台redis信息，维护在内存中。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210602224350.png" style="zoom:33%;" />
+
+## 使用redis进行商品详情页动态内容请求的实现
+
+使用redis来做商品详情页动态获取接口缓存内容实现，在springMVC的controller层将对应的redis引入，将从下游server层获取到的一些数据在controller层缓存起来，以便于下次再有任何的请求进来时，可以直接判断缓存中是否有对应商品详情页的数据 ，如果有的话直接返回 ，不走下游的service层调用，减少对数据库的依赖。
+
+**修改ItemControlller**
+
+之前获取商品的逻辑是根据传入的商品Id到数据库中取查找是否有相应的商品，这样会花费大量的时间在数据库的查找中。
+
+改进的思路就是在ItemControlller层中，在访问对应的item之前完成缓存的操作。如果redis缓存中没有就到数据库中查询并将其存在redis中，如果有就直接在redis缓存中进行访问，以减少数据库访问的耗时。
+
+```java
+
+@Autowired
+    private RedisTemplate redisTemplate;
+
+
+/**
+     * 商品详情页浏览
+     */
+    @RequestMapping(value = "/get", method = {RequestMethod.GET})
+    @ResponseBody
+    public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
+
+//      根据商品的id到redis内获取itemModel--->在redis中key为item_id,value为itemModel
+        ItemModel itemModel = (ItemModel) redisTemplate.opsForValue().get("item_" + id);
+//      如果redis中不存在对应的itemModel，则访问下游service
+        if (itemModel == null) {
+            itemModel = itemService.getItemById(id);
+//            设置itemModel到redis内
+            redisTemplate.opsForValue().set("item_" + id, itemModel);
+//            设置redis缓存的失效时间
+            redisTemplate.expire("item_" + id, 10, TimeUnit.MINUTES);
+        }
+    
+    //......
+    }
+```
+
+云端部署，并进行测试
+
+## 本地热点缓存
+
+在redis缓存之上还需要引入一个本地热点缓存。
+
+`多级缓存的概念：先去本地缓存、如果本地缓存不存在，到redis缓存中取，如果redis缓存中也不存在，才到数据库中取。`
+
+- 用于存放热点数据
+
+  可以减少服务端到redis中取数据的网络开销，也可以减少redis服务器的压力。
+
+- 脏读非常不敏感
+
+  因为本地热点缓存在一个分布式的环境下，是每一台服务器都有热门商品的一个备份数据，如果说对应的商品在数据库中发生变化的时候，对于redis的缓存只需要清除对应的key即可，但是对于本地的热点缓存来说，很少有方法清除JVM中的数据的，因为要清除JVM中的数据必须要每台服务器都清除对应的数据，要通知每台应用服务器都清除本地热点缓存信息，本身就是很难的（可以使用MQ，异步消息队列，来广播通知，应用服务器作为监听）
+
+- 内存可控
+
+  热点数据可以认为是经常被访问并且变化非常少的数据。本地热点缓存的生命周期不是特别长（比redis的短）
+
+> 本地热点缓存存在的问题：当数据更新的时候，没有很好的办法更新本地热点缓存，而且存在JVM容量大小的限制。
+
+本地热点缓存的设计时需要考虑淘汰的机制（例如先进先出、最长时间未被访问等），以保证不常被使用的key被淘汰掉，也可以做到key自动失效
+
+### Guava cache
+
+本质上是一个可并发的hashmap
+
+- 可以控制key-value的大小和key的超时时间
+- 可以配置LRU策略（最近最少未被使用的key会被淘汰）
+- 线程安全
+
+1.引入依赖
+
+```xml
+ <dependency>
+   <groupId>com.google.guava</groupId>
+   <artifactId>guava</artifactId>
+   <version>19.0</version>
+ </dependency>
+```
+
+2.CacheService
+
+```java
+package com.example.miaosha.service;
+
+//封装本地缓存
+public interface CacheService {
+    //    存方法
+    void setCommonCache(String key, Object value);
+
+    //    取方法
+    Object getCommonCache(String key);
+}
+```
+
+3.CacheServiceImpl
+
+```java
+package com.example.miaosha.service.impl;
+
+import com.example.miaosha.service.CacheService;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import org.springframework.stereotype.Service;
+
+
+import javax.annotation.PostConstruct;
+import java.util.concurrent.TimeUnit;
+
+@Service
+public class CacheServiceImpl implements CacheService {
+
+    private Cache<String, Object> commonCache = null;
+
+    @PostConstruct
+    public void init() {
+        commonCache = CacheBuilder.newBuilder()
+//设置缓存容器的初始化容量为10
+                .initialCapacity(10)
+//设置缓存中最大可以存储100个KEY，超过100个以后会按照LRU的策略移除缓存项
+                .maximumSize(100)
+//设置写缓存后多少秒过期
+                .expireAfterWrite(60, TimeUnit.SECONDS).build();
+    }
+
+    @Override
+    public void setCommonCache(String key, Object value) {
+        commonCache.put(key, value);
+    }
+
+    @Override
+    public Object getCommonCache(String key) {
+        return commonCache.getIfPresent(key);
+    }
+}
+```
+
+4.修改ItemController
+
+```java
+@Autowired
+    private CacheService cacheService;
+
+//...
+
+/**
+     * 商品详情页浏览
+     */
+    @RequestMapping(value = "/get", method = {RequestMethod.GET})
+    @ResponseBody
+    public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
+        ItemModel itemModel = null;
+
+//1.先到本地缓存中找对应的商品
+        itemModel = (ItemModel) cacheService.getCommonCache("item_" + id);
+
+//2.如果本地缓存中不存在，到redis缓存中找
+        if (itemModel == null) {
+//      根据商品的id到redis内获取itemModel--->在redis中key为item_id,value为itemModel
+            itemModel = (ItemModel) redisTemplate.opsForValue().get("item_" + id);
+//3.如果redis中不存在对应的itemModel，则访问下游service，到数据库中找
+            if (itemModel == null) {
+                itemModel = itemService.getItemById(id);
+//            并设置itemModel到redis内
+                redisTemplate.opsForValue().set("item_" + id, itemModel);
+//            设置redis缓存的失效时间
+                redisTemplate.expire("item_" + id, 10, TimeUnit.MINUTES);
+            }
+//            填充本地缓存
+            cacheService.setCommonCache("item_" + id, itemModel);
+        }
+
+        ItemVO itemVO = converVOFromModel(itemModel);
+        return CommonReturnType.create(itemVO);
+    }
+```
+
+## nginx缓存策略
+
+之前的本地热点缓存时部署在应用服务器上的，可以考虑将其部署到nginx上。因为nginx是离用户H5最近的一个结点。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210604150232.png" style="zoom:33%;" />
+
+###  nginx proxy cache缓存
+
+- nginx反向代理前置
+- 依靠文件系统存索引级文件
+- 依靠内存缓存文件地址
+
+修改nginx.conf
+
+```properties
+#声明一个cache缓存结点的内容
+proxy_cache_path /usr/local/openresty/nginx/tmp_cache levels=1:2 keys_zone=tmp_cache:100m inactive=7d max_size=10g;
+#keys_zone的大小为100m，存储所用的key,时间为7天，存储容量操作10刚开始采取LRU算法
+
+location / {
+	proxy_cache tmp_cache;
+	proxy_cache_key $uri;
+	proxy_cache_valid 200 206 304 302 7d;
+	#只用状态码为200 206 304 302才进行cache
+}
+```
+
+重启：sbin/nginx -s reload，访问：http://10.250.191.96/item/get?id=11
+
+但是这种方法并没有比直接使用将本地热点缓存时部署在应用服务器上好！原因为本地缓存是直接在磁盘上进行存取，并没在nginx的内存中。
+
+### nginx lua
+
+- lua协程机制
+
+协程机制的好处就是在编写对应代码的时候就无需考虑异步的方式，完全以同步的方式。一旦协程在运行的时候遇到了任何的阻塞，比如果说发生了IO调用，会主动到nginx的epoll模型上注册异步回调的句柄，放弃自己的执行权限，然后当对应的epoll模型接收到IO模型阻塞调用返回之后会再将对应的协程唤醒。
+
+- 协程机制的好处
+
+  依附于线程内存模型，切换开销小
+  遇到阻塞就归还执行权，代码同步
+  无需加锁
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210604161640.png" style="zoom:50%;" />
+
+- nginx协程
+
+  - nginx的每一个worker进程都是在epoll或kqueue这种事件模型之上，封装成协程
+  - 每一个请求都哦于一个协程进行处理
+  - 即使ngx_lua需要运行lua，相对C有一定的开销，但是仍然能保证高并发能力。
+  - nginx每个工作进程创建一个lua虚拟机
+  - 工作进程内的所有协程共享同一个JVM
+  - 每个外部请求由一个lua协程处理，之间数据隔离
+  - lua代码调用io等异步接口时，协程被挂起，上下文自动保存，不阻塞工作进程，io异步操作完成后还原协程上下文，代码继续执行。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210604165154.png" style="zoom:50%;" />
+
+
+
+- nginx lua插载点
+  - init_by_lua:系统启动时调用
+  - init_worker_by_lua：worker进程启动时调用
+  - set_by_lua：nginx变量用复杂lua return
+  - rewrite_by_lua:重写url规则
+  - access_by_lua：权限验证阶段
+  - content_by_lua：内容输出结点
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605174614.png" style="zoom:50%;" />
+
+修改nginx.conf
+
+```conf
+ #lua，即在系统启动时调用，这个只是用来做演示的！
+    init_by_lua_file ../lua/init.lua;
+```
+
+添加init.lua
+
+```shell
+root@wag-SYS-7049GP-TRT:/usr/local/openresty# mkdir lua
+root@wag-SYS-7049GP-TRT:/usr/local/openresty# cd lua
+root@wag-SYS-7049GP-TRT:/usr/local/openresty/lua# vi init.lua
+```
+
+```lua
+#添加
+ngx.log(ngx.ERR,"init lua success");
+```
+
+再次修改nginx.conf
+
+```conf
+location /staticitem/get{
+    default_type "text/html";#指定输出格式
+   content_by_lua_file ../lua/staticitem.lua;
+}
+```
+
+lua文件夹下添加staticitem.lua
+
+```lua
+hello static item lua
+```
+
+重启：sbin/nginx -s reload，访问：http://10.250.191.96/staticitem/get?id=11， 会输出
+
+```
+hello static item lua
+```
+
+可以通过lua挂载点来修改某一个url对应的输出
+
+
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605184454.png" style="zoom: 33%;" />
+
+
+
+### openResty实践
+
+- shared dic：共享内存字典，所有worker进程可见，lru淘汰    --将热点商品的缓存放在nginx中
+
+修改nginx.conf
+
+```conf
+lua_shared_dict my_cache 128m;
+
+location /luaitem/get{
+	default_type "application/json";
+	content_by_lua_file ../lua/itemshareddic.lua;
+}
+```
+
+进入lua目录新建itemshareddic.lua
+
+```lua
+function get_from_cache(key)
+    local cache_ngx=ngx.shared.my_cache
+    local value=cache_ngx:get(key)
+    return value
+end
+
+function set_to_cache(key,value,exptime)
+    if not exptime then
+        exptime=0;
+    end
+    local cache_ngx=ngx.shared.my_cache
+    local succ,err,forcible=cache_ngx:set(key,value,exptime)
+    return succ
+end
+
+local args=ngx.req.get_uri_args() --拿到nginx get 请求上的参数
+local id=args["id"]
+local item_model=get_from_cache("item_"..id) -- 到nginx缓存中查找是否有对应的商品
+if item_model==nil then
+    local resp=ngx.location.capture("/item/get?id="..id)--如果说nginx缓存中没有对应的商品，就将对应的请求转发给后端的应用服务器上
+    item_model=resp.body -- json返回请求
+    set_to_cache("item_"..id,item_model,1*60)
+end
+ngx.say(item_model)--如果说nginx缓存中有对应的商品，直接返回
+```
+
+重启：sbin/nginx -s reload，访问：http://10.250.191.96/luaitem/get?id=11，
+
+---
+
+
+
+shared dic：共享内存字典支持lru淘汰，但是更新机制并不好
+
+如何解决这一问题：
+
+nginx的shared dic只将热点数据存在缓存中，非热点但是高流量数据存在redis的slave中，只读redis的slave，同时redis的slave通过redis的master做一个主从之间的同步，更新对应的一个脏数据。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605193719.png" style="zoom:33%;" />
+
+在lua文件夹下新建itemredis.lua
+
+```lua
+local args=ngx.req.get_uri_args()
+local id=args["id"]
+local redis=require "resty.redis"
+local cache = redis:new()
+local ok,err=cache:connect("redis服务器的ip地址","6379")
+local item_model=cache:get("item_"..id)
+if item_model == ngx.null or item_model==nil then
+    local resp = ngx.location.capture("/item/get?id="..id)
+    item_model=repo.body
+end
+
+ngx.say(item_model)
+```
+
+修改ngnix.conf
+
+```conf
+location /luaitem/get{
+	default_type "application/json";
+	content_by_lua_file ../lua/itemredis.lua;
+}
+```
+
+## 小结
+
+思考：
+
+- 如何解决缓存脏读和失效问题
+- 在大型的应用集群中如果对redis访问过度依赖，是否会产生应用服务器到redis之间的网络带宽产生瓶颈？如果产生瓶颈如何解决
+- nginx作为一个反向代理的中间件节点节点，若感知到业务，例如商品详情页的查询，是否会引入太多的定制化业务的能力，是否可以考虑隔离分层？是否可以使用两层nginx的策略取解决？多引入一层后又如何确保性能？
+
+# 第10章 查询优化技术之页面静态化
 

@@ -72,6 +72,10 @@ public class UserController extends BaseController {
         uuidToken = uuidToken.replace("-", "");
 
 //        建立token和用户登录态之间的联系
+
+        /**
+        * 注意新建token后token会存储在redis以及本地浏览器中，注意清除本地浏览器中的token
+        * */
         redisTemplate.opsForValue().set(uuidToken, userModel);//redis中uuidToken就是key，userModel就是value这样一来只要redis中存在uuidToken这个key，就惹味userModel存在
         redisTemplate.expire(uuidToken, 1, TimeUnit.HOURS);//设置超时时间为1小时
 

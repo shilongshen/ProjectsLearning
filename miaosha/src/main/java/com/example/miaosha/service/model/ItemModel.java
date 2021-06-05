@@ -4,13 +4,14 @@ import org.hibernate.validator.constraints.NotBlank;
 
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 
 /**
 * itemmodel封装了ItemDO和ItemStockDO两个表中的字段
 * */
-public class ItemModel {
+public class ItemModel implements Serializable {
     private int id;
 
     //    商品名
