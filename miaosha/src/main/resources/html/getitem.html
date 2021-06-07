@@ -15,13 +15,13 @@
     <div id="promoStartDateContainer" class="form-group">
         <label style="color:blue" id="promoStatus" class="control-label"></label>
         <div>
-            <label style="color:red" class="control-label" id="promoStartDate" />
+            <label style="color:red" class="control-label" id="promoStartDate"/>
         </div>
     </div>
 
     <div class="form-group">
         <div>
-            <label class="control-label" id="title" />
+            <label class="control-label" id="title"/>
         </div>
     </div>
 
@@ -34,35 +34,35 @@
     <div class="form-group">
         <label class="control-label">商品描述</label>
         <div>
-            <label class="control-label" id="description" />
+            <label class="control-label" id="description"/>
         </div>
     </div>
 
     <div id="normalPriceContainer" class="form-group">
         <label class="control-label">商品价格</label>
         <div>
-            <label class="control-label" id="price" />
+            <label class="control-label" id="price"/>
         </div>
     </div>
 
     <div id="promoPriceContainer" class="form-group">
         <label style="color:red" class="control-label">秒杀价格</label>
         <div>
-            <label style="color:red" class="control-label" id="promoPrice" />
+            <label style="color:red" class="control-label" id="promoPrice"/>
         </div>
     </div>
 
     <div class="form-group">
         <label class="control-label">商品库存</label>
         <div>
-            <label class="control-label" id="stock" />
+            <label class="control-label" id="stock"/>
         </div>
     </div>
 
     <div class="form-group">
         <label class="control-label">商品销量</label>
         <div>
-            <label class="control-label" id="sales" />
+            <label class="control-label" id="sales"/>
         </div>
     </div>
 
@@ -73,22 +73,42 @@
     </div>
 
 </div>
+
+<!--<input type="hidden" id="isInit" value="0"/>-->
+
 </body>
 
 <script>
     var g_itemVO = {};
-    $(document).ready(function() {
+
+    // function hasInit() {
+    //     var isInit = $("#isInit").val();
+    //     return isInit;
+    // }
+    //
+    // function setHasInit() {
+    //     $("#isInit").val("1");
+    // }
+    //
+    // function initView() {
+    //     var isInit = hasInit();
+    //     if (isInit == "1") {
+    //         return;
+    //     }
+    // }
+
+    $(document).ready(function () {
         // 获取商品详情
         $.ajax({
             type: "GET",
-            url: "http://"+g_host+"/item/get",
+            url: "http://" + g_host + "/item/get",
             data: {
                 "id": getParam("id"),
             },
-            xhrFields:{
-                withCredentials:true
+            xhrFields: {
+                withCredentials: true
             },
-            success: function(data) {
+            success: function (data) {
                 if (data.status == "success") {
                     g_itemVO = data.data;
                     reloadDom();
@@ -97,32 +117,32 @@
                     alert("获取信息失败，原因为" + data.data.errMsg);
                 }
             },
-            error: function(data) {
+            error: function (data) {
                 alert("获取信息失败，原因为" + data.responseText);
             }
         });
 
-        $("#createOrder").on("click", function() {
-            var token=window.localStorage["token"];
-            if(token==null){
+        $("#createOrder").on("click", function () {
+            var token = window.localStorage["token"];
+            if (token == null) {
                 alert("没有登录，不能下单");
-                window.location.href="login.html";//如果没有登录就直接跳到登录页
+                window.location.href = "login.html";//如果没有登录就直接跳到登录页
                 return false;
             }
             $.ajax({
                 type: "POST",
                 //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
-                url: "http://"+g_host+"/order/createorder?token="+token,
+                url: "http://" + g_host + "/order/createorder?token=" + token,
                 contentType: "application/x-www-form-urlencoded",
                 data: {
                     "itemId": g_itemVO.id,
                     "promoId": g_itemVO.promoId,
                     "amount": 1,//暂时写死为一件
                 },
-                xhrFields:{
-                    withCredentials:true
+                xhrFields: {
+                    withCredentials: true
                 },
-                success: function(data) {
+                success: function (data) {
                     if (data.status == "success") {
                         alert("下单成功");
                         window.location.reload();<!--刷新页面-->
@@ -130,11 +150,11 @@
                         alert("下单失败，原因为" + data.data.errMsg);
                         //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
                         if (data.data.errCode == 200003) {
-                            window.location.href="login.html";
+                            window.location.href = "login.html";
                         }
                     }
                 },
-                error: function(data) {
+                error: function (data) {
                     alert("下单失败，原因为" + data.responseText);
                 }
             });
@@ -160,7 +180,7 @@
                 g_itemVO.promoStatus = 2;
                 reloadDom();
             }
-            $("#promoStartDate").text("秒杀活动将于："+g_itemVO.startDate+" 开始售卖 倒计时："+delta+"  秒");
+            $("#promoStartDate").text("秒杀活动将于：" + g_itemVO.startDate + " 开始售卖 倒计时：" + delta + "  秒");
             $("#promoPrice").text(g_itemVO.promoPrice);
             //规定：当商品存在秒杀活动的时候，则规定该商品只有在秒杀开始后才可以进行下单，之前不可以进行下单
             $("#createOrder").attr("disabled", true);
@@ -170,13 +190,14 @@
             $("#promoPrice").text(g_itemVO.promoPrice);
             $("#createOrder").attr("disabled", false);
             $("#normalPriceContainer").hide();//在秒杀状态下将普通价格隐藏
-        }else if (g_itemVO.promoStatus == 0) {
-        //    说明该商品没有秒杀活动
-        //    将秒杀信息隐藏
+        } else if (g_itemVO.promoStatus == 0) {
+            //    说明该商品没有秒杀活动
+            //    将秒杀信息隐藏
             $("#promoStartDateContainer").hide();
             $("#promoPriceContainer").hide();
         }
     }
+
     function getParam(paramName) {
         paramValue = "", isFound = !1;
         if (this.location.search.indexOf("?") == 0 && this.location.search.indexOf("=") > 1) {

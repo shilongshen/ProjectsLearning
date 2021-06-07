@@ -14,7 +14,7 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 
 
 
-##	第一章 课程介绍
+##	第1章 课程介绍
 
 **电商秒杀应用简介**
 
@@ -22,7 +22,7 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 > * 进入商品详情页获取秒杀商品详情
 > * 秒杀开始后进入下单确认页下单并支付成功
 
-##	第二章 应用SpringBoot完成基础项目搭建
+##	第2章 应用SpringBoot完成基础项目搭建
 
 ###	2.1 使用IDEA创建maven项目
 
@@ -348,7 +348,7 @@ public class App {
 
 启动测试
 
-##	第三章 用户模块开发
+##	第3章 用户模块开发
 
 ###	3.1 使用SpringMVC方式开发用户信息
 
@@ -1721,7 +1721,7 @@ public class UserModel {
 
 
 
-##	第四章 商品模块开发
+##	第4章 商品模块开发
 
 包括了商品创建和商品的展示
 
@@ -2586,7 +2586,7 @@ getitem.html
 </html>
 ```
 
-##	第五章 交易模块开发
+##	第5章 交易模块开发
 
 ###	5.1 交易模型管理——交易模型创建
 
@@ -3183,7 +3183,7 @@ public class OrderController extends BaseController {
 }
 ```
 
-##	第六章 秒杀模块开发
+##	第6章 秒杀模块开发
 
 ###	6.1 秒杀模型管理——活动模型创建
 
@@ -4944,4 +4944,142 @@ location /luaitem/get{
 - nginx作为一个反向代理的中间件节点节点，若感知到业务，例如商品详情页的查询，是否会引入太多的定制化业务的能力，是否可以考虑隔离分层？是否可以使用两层nginx的策略取解决？多引入一层后又如何确保性能？
 
 # 第10章 查询优化技术之页面静态化
+
+之前的多级缓存都是H5(ajax)进来的请求，如何对H5(static)文件路径进行优化？
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605193719.png" style="zoom:33%;" />
+
+## 静态请求CDN
+
+- DNS用CNAME解析到源站
+- 回源缓存设置
+- 强推失效
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605211742.png" style="zoom:53%;" />
+
+ 
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605213301.png" style="zoom:33%;" />
+
+
+
+
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605215517.png" style="zoom:33%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605220238.png" style="zoom: 50%;" />
+
+有效性判断
+
+- ETag:资源唯一标识
+- if-none-match：客户端发送的匹配etag标识符
+- last-modified：资源最后被修改的时间
+- if-modified-since：客户端发送的匹配资源最后修改时间的标识符
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605221738.png" style="zoom:33%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605222311.png" style="zoom:33%;" />
+
+**协商机制**：比较last-modified和etag到服务端，若服务端判断没变化则304不返回数据，否则200返回数据。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210606145737.png" style="zoom:63%;" />
+
+
+
+## CDN自定义缓存策略
+
+对于CDN，它是介于客户端浏览器和服务端nginx之间的一个代理层，既充当了客户端的一个服务端的角色，也充当了服务端nginx的一个客户端的角色。
+
+- 可自定义目录过期时间
+- 可自定义后缀名过期时间
+- 可自定义对应权重
+- 可通过界面或api强制cdn对应目录刷新（非保成功）
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210606150724.png" style="zoom:50%;" />
+
+## 静态资源部署策略
+
+方法1：css,js,img等元素使用带版本号部署，例如a.js?v=1.0，这种方法不便利，且维护困难
+
+方法2：css,js,img等元素使用带摘要部署，例如a.js?v=45dw，这种方法存在先部署HTML还是先部署资源 的覆盖问题
+
+方法3（**推荐**）：css,js,img等元素使用摘要做文件名部署，例如a45dw.js，这种方法存新老版本可以并存并且可以回滚，资源部署完后再部署HTML。
+
+---
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210606152058.png" style="zoom:40%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210606152213.png" style="zoom:40%;" />
+
+## 全页面静态化
+
+对应的部署结构：（获取商品详情）用户先访问秒杀nginx服务器下resources目录下的getitem.html，然后通过CDN拿到对应的静态资源文件，然后通过Ajax请求发送具体的根据商品id获取商品内容的请求，然后通过多级缓存返回对应的json数据给H5(Ajax),然后渲染H5(static)，最后生成一个给用户的页面。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210605213301.png" style="zoom:33%;" />
+
+定义：在服务端完成HTML，css,甚至js的load渲染成纯html文件后直接以静态资源的方式部署到cdn上。
+
+（已经填充数据的商品详情页直接部署到CDN上）
+
+### [phantomjs](https://github.com/ariya/phantomjs) 
+
+> [参考](http://www.jsphp.net/python/show-24-270-1.html)
+>
+> PhantomJS是一个基于webkit的JavaScript API。它使用QtWebKit作为它核心浏览器的功能，使用webkit来编译解释执行JavaScript代码。任何你可以在基于webkit浏览器做的事情，它都能做到。它不仅是个隐形的浏览器，提供了诸如CSS选择器、支持Web标准、DOM操作、JSON、HTML5、Canvas、SVG等，同时也提供了处理文件I/O的操作，从而使你可以向操作系统读写文件等。PhantomJS的用处可谓非常广泛，诸如网络监测、网页截屏、无需浏览器的 Web 测试、页面访问自动化等。
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210606154835.png" style="zoom: 33%;" />
+
+将对应的jQuery这边的内部的ajax获取商品详情的操作，在服务端或者在爬虫端执行掉，执行完成之后，依赖爬虫生成一个已经reloadDom完成的静态资源文件，然后将它部署到CDN上，完成全页面静态化操作。
+
+在PhantomJS下新建getitem.js
+
+```javascript
+var page = require("webpage").create();
+var fs = require("fs");
+page.open("http://10.250.191.96/luaitem/get?id=11", function (status) {
+    
+    console.log("status=" + status);
+    var isInit = "0";
+
+    setInterval(function () {
+        if (isInit !== "1") {
+            page.evaluate(function () {
+                initView();
+            });
+            isInit = page.evaluate(function () {
+                return hasInit();
+            });
+        } else {
+            fs.write("getitem.html", page.content, "w");
+            phantom.exit();
+        }
+    }, 1000);
+
+});
+```
+
+修改getitem.html
+
+```html
+<input type="hidden" id="isInit" value="0"/>
+
+function hasInit() {
+        var isInit = $("#isInit").val();
+        return isInit;
+    }
+
+    function setHasInit() {
+        $("#isInit").val("1");
+    }
+
+    function initView() {
+        var isInit = hasInit();
+        if (isInit == "1") {
+            return;
+        }
+		...
+    }
+```
+
+
 
