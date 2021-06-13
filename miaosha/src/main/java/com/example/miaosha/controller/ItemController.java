@@ -5,6 +5,7 @@ import com.example.miaosha.error.BusinessException;
 import com.example.miaosha.response.CommonReturnType;
 import com.example.miaosha.service.CacheService;
 import com.example.miaosha.service.ItemService;
+import com.example.miaosha.service.PromoService;
 import com.example.miaosha.service.model.ItemModel;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
@@ -30,6 +31,8 @@ public class ItemController extends BaseController {
     private RedisTemplate redisTemplate;
     @Autowired
     private CacheService cacheService;
+    @Autowired
+    private PromoService promoService;
 
     /**
      * 创建商品的controller
@@ -66,7 +69,7 @@ public class ItemController extends BaseController {
 
         if (itemModel.getPromoModel() != null) {
 //如果有正在进行的或即将进行的秒杀活动
-//            将待显示的活动信息进行相应的设置
+//将待显示的活动信息进行相应的设置
             itemVO.setPromoStatus(itemModel.getPromoModel().getStatus());
             itemVO.setPromoId(itemModel.getPromoModel().getItemId());
             itemVO.setPromoPrice(itemModel.getPromoModel().getPromoItemPrice());
@@ -77,6 +80,15 @@ public class ItemController extends BaseController {
         return itemVO;
     }
 
+    /**
+     * 发布活动商品，将库存存入缓存中
+     */
+    @RequestMapping(value = "/publishPromo", method = {RequestMethod.GET})
+    @ResponseBody
+    public CommonReturnType publishPromo(@RequestParam(name = "promoId") Integer promoId) {
+        promoService.publishPromo(promoId);
+        return CommonReturnType.create(null);
+    }
 
     /**
      * 商品详情页浏览

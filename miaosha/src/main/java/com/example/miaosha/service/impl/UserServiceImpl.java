@@ -14,8 +14,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.concurrent.TimeUnit;
 
 
 @Service
@@ -26,11 +29,13 @@ public class UserServiceImpl implements UserService {
     private userPasswordDOMapper userPasswordDOMapper;
     @Autowired
     private ValidatorImpl validator;
+    @Autowired
+    private RedisTemplate redisTemplate;
 
     /**
      * 用户查询
      * 通过用户ID获取用户对象的方法
-     * */
+     */
     @Override
     public UserModel getUserById(Integer id) {
 //        调用UserDOMapper获取对应的用户UserDO
@@ -44,6 +49,17 @@ public class UserServiceImpl implements UserService {
 //        通过用户名获取用户密码
         userPasswordDO userPasswordDO = userPasswordDOMapper.selectByUserId(userDO.getId());
         return convertFromDataObject(userDO, userPasswordDO);
+    }
+
+    @Override
+    public UserModel getUserByIdInCache(Integer id) {
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get("user_validate_" + id);
+        if (userModel == null) {
+            userModel = this.getUserById(id);
+            redisTemplate.opsForValue().set("user_validate_" + id, userModel);
+            redisTemplate.expire("user_validate_" + id, 20, TimeUnit.MINUTES);
+        }
+        return userModel;
     }
 
     /**
@@ -64,7 +80,7 @@ public class UserServiceImpl implements UserService {
 //            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户信息填写格式有误");
 //        }
         ValidationResult result = validator.validate(userModel);
-        if (result.isHasErrors()){
+        if (result.isHasErrors()) {
             throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, result.getErrMsg());
         }
 

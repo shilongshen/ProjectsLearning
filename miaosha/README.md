@@ -5081,5 +5081,889 @@ function hasInit() {
     }
 ```
 
+# 第11章 交易优化技术之缓存库存
+
+本章目标
+
+- 掌握高效交易验证模式   ------->创建订单(交易时)的时候先从redis缓存中查找是否有对应的item model和user model，如果有则直接从缓存中取，从而减少数据库查询消耗。
+- 掌握缓存库存模型
+
+交易性能瓶颈
+
+- 交易验证完全依赖数据库
+- 库存行锁，所有减库存操作都是串行进行的
+- 后置处理逻辑
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210607193238.png" style="zoom:50%;" />
+
+## 交易验证优化
+
+- 用户风控策略优化：策略缓存模型化
+
+- 活动校验策略优化：引入活动发布流程，模型缓存化，紧急下线能力
+
+修改ItemServiceImpl
+
+```java
+
+//    item以及promo model缓存模型,在缓存中通过id获取商品
+    @Override
+    public ItemModel getItemByIdInCache(Integer id) {
+//        在redis缓存中查询是否有对应的商品
+        ItemModel itemModel = (ItemModel) redisTemplate.opsForValue().get("item_validate_" + id);
+        if (itemModel == null) {
+//            如果没有在数据库中查找，并将其设置到redis缓存中
+            itemModel = this.getItemById(id);
+            redisTemplate.opsForValue().set("item_validate_" + id, itemModel);
+            redisTemplate.expire("item_validate_" + id,20, TimeUnit.MINUTES);
+        }
+        return itemModel;
+    }
+```
+
+修改UserServiceImpl
+
+```java
+public UserModel getUserByIdInCache(Integer id) {
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get("user_validate_" + id);
+        if (userModel == null) {
+            userModel = this.getUserById(id);
+            redisTemplate.opsForValue().set("user_validate_" + id, userModel);
+            redisTemplate.expire("user_validate_" + id, 20, TimeUnit.MINUTES);
+        }
+        return userModel;
+}
+```
+
+修改OrderServiceImpl，**创建订单的时候先从redis缓存中查找是否有对应的item model和user model，如果有则直接从缓存中取，从而减少数据库查询消耗。**
+
+```java
+public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount) throws BusinessException {
+        //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
+//        ItemModel itemModel = itemService.getItemById(itemId);//通过itemId获取itemModel
+        ItemModel itemModel = itemService.getItemByIdInCache(itemId);//在redis缓存中通过itemId获取itemModel
+
+        if (itemModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "商品不存在");
+        }
+
+        UserModel userModel = userService.getUserByIdInCache(userId);//查询用户信息
+ //...   
+}
+```
+
+## 库存行锁优化
+
+首先分析：在库存扣减的时候会执行decreaseStock的sql语句上，其实数据库会在减库存的时候在itemId字段加上一个行锁（如果该字段有索引），如果该字段没有索引就会对整张表进行上锁。
+
+```xml
+<!--更新库存，根据商品id和商品购买数量扣减商品库存-->
+    <update id="decreaseStock">
+        update item_stock
+        set stock = stock - #{amount}<!--将商品库存扣减-->
+        where item_id = #{itemId} and stock >= #{amount}
+    </update>
+```
+
+为item_stock表的item_id字段加上唯一索引。
+
+  ```mysql
+  alter table item_stock add unique index item_id_index(item_id)
+  ```
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210608105837.png" style="zoom:80%;" />
+
+库存行锁优化方案：
+
+### 扣减库存缓存化
+
+- 活动发布同步库存进缓存
+
+修改PromoServiceImpl
+```java
+public void publishPromo(Integer promoId) {
+//        通过活动id获取活动
+        PromoDO promoDO = promoDOMapper.selectByPrimaryKey(promoId);
+        if (promoDO==null||promoDO.getItemId() == null || promoDO.getItemId().intValue() == 0) {
+            return;
+        }
+//        获取有活动的商品
+        ItemModel itemModel = itemService.getItemById(promoDO.getItemId());
+//        将库存同步到redis内
+        redisTemplate.opsForValue().set("promo_item_stock_" + itemModel.getId(), itemModel.getStock());
+
+    }
+```
+
+修改itemController
+
+```java
+/**
+     * 发布活动商品，将库存存入缓存中
+     */
+    @RequestMapping(value = "/publishPromo", method = {RequestMethod.GET})
+    @ResponseBody
+    public CommonReturnType publishPromo(@RequestParam(name = "promoId") Integer promoId) {
+        promoService.publishPromo(promoId);
+        return CommonReturnType.create(null);
+    }
+```
+
+
+
+- (活动商品)下单交易减缓存中库存
+
+```java
+//    库存扣减,根据商品id和商品购买数量扣减商品库存
+    @Override
+    @Transactional
+    public Boolean decreaseStock(Integer itemId, Integer amount) {
+//        返回值为影响的条目数，如果sql语句执行失败，返回值为0
+//        int affectRow = itemStockDOMapper.decreaseStock(itemId, amount);
+//        更新活动商品（减少）redis中的库存
+        long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue()*-1);
+//        result表示完成减库存操作后的数字
+        if (result >= 0) {
+//            更新库存成功
+            return true;
+        } else {
+//            更新库存失败
+            return false;
+        }
+
+    }
+```
+
+存在的问题
+
+- 数据库和缓存中的库存记录不一致
+
+**使用消息队列进行解决**:arrow_down:
+
+### 异步同步数据库
+
+解决方案：
+
+- 活动发布同步库存进缓存
+- 下单交易减缓存中的库存
+- 异步消息扣减数据库中的库存
+
+#### 异步消息队列rocketmq
+
+- 高性能，高并发，分布式消息中间件
+- 典型应用场景：分布式事务，异步解耦
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210608174133.png" style="zoom:40%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210608174213.png" style="zoom:40%;" />
+
+
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210608194345.png" style="zoom: 50%;" />
+
+
+
+---
+
+具体的步骤如下：
+
+引入依赖
+
+```xml
+<dependency>
+   <groupId>org.apache.rocketmq</groupId>
+   <artifactId>rocketmq-client</artifactId>
+   <version>4.8.0</version>
+</dependency>
+```
+
+修改applacation.properties
+
+```properties
+#指定MQ nameserver的地址
+mq.nameserver.addr=10.249.159.48:9876
+#指定MQ的top
+mq.topicname=stock
+```
+
+声明两个bean，一个是消息发送方，另一个是消息接收方；一旦redis缓存中更新库存成功，就发送一条消息出去，让异步消息队列感知到，然后减数据库的库存。
+
+```java
+@Component
+public class MqProducer {
+    private DefaultMQProducer producer;
+    @Value("${mq.nameserver.addr}")
+    private String nameAddr;
+    @Value("${mq.topicname}")
+    private String topicName;
+
+    @PostConstruct
+    public void init() throws MQClientException {
+//    做mq producer的初始化
+        producer = new DefaultMQProducer("producer_group");
+        producer.setNamesrvAddr(nameAddr);
+        producer.start();
+    }
+
+    //    同步库存扣减消息
+    public boolean asyncReduceStock(Integer itemId, Integer amount) {
+        Map<String, Object> bodyMap = new HashMap<>();
+        bodyMap.put("itemId", itemId);
+        bodyMap.put("amount", amount);
+        Message message = new Message(topicName, "increase", JSON.toJSON(bodyMap).toString().getBytes(StandardCharsets.UTF_8));
+        try {
+            producer.send(message);
+        } catch (MQClientException e) {
+            e.printStackTrace();
+            return false;
+        } catch (RemotingException e) {
+            e.printStackTrace();
+            return false;
+        } catch (MQBrokerException e) {
+            e.printStackTrace();
+            return false;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
+    }
+}
+```
+
+
+
+```java
+@Component
+public class MqConsumer {
+    private DefaultMQPushConsumer consumer;
+    @Value("${mq.nameserver.addr}")
+    private String nameAddr;
+    @Value("${mq.topicname}")
+    private String topicName;
+
+    @Autowired
+    private ItemStockDOMapper itemStockDOMapper;
+
+    @PostConstruct
+    public void init() throws MQClientException {
+        //    做mq consumer的初始化
+        consumer = new DefaultMQPushConsumer("stock_consumer_group");
+        consumer.setNamespace(nameAddr);
+        consumer.subscribe(topicName, "*");
+
+        consumer.registerMessageListener(new MessageListenerConcurrently() {
+            @Override
+            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs, ConsumeConcurrentlyContext consumeConcurrentlyContext) {
+//                实现库存到数据库扣减的逻辑,消费者订阅消息，一旦有消息就实现数据库库存扣减
+                MessageExt message = msgs.get(0);
+                String jsonString = new String(message.getBody());
+                Map<String, Object> map = JSON.parseObject(jsonString, Map.class);
+                Integer itemId = (Integer) map.get("itemId");
+                Integer amount = (Integer) map.get("amount");
+
+                //异步扣减数据库
+                itemStockDOMapper.decreaseStock(itemId, amount);
+//                一旦返回成功，MQ就会认定这条消息被消费，下次不会再做对应的投放了
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+        });
+        consumer.start();
+    }
+}
+```
+
+修改ItemServiceImpl
+
+```java
+//    库存扣减,根据商品id和商品购买数量扣减商品库存
+    @Override
+    @Transactional
+    public Boolean decreaseStock(Integer itemId, Integer amount) {
+//        返回值为影响的条目数，如果sql语句执行失败，返回值为0
+//        int affectRow = itemStockDOMapper.decreaseStock(itemId, amount);
+//        更新活动商品（减少）redis中的库存
+        long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue() * -1);
+//        result表示完成减库存操作后的数字
+        if (result >= 0) {
+//            更新库存成功
+
+//          producer发送消息
+
+            boolean mqResult = mqProducer.asyncReduceStock(itemId, amount);
+//            如果消息发送失败，首先将库存进行回滚，返回false
+            if (!mqResult) {
+                redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue());
+                return false;
+            }
+//            如果消息发送成功，返回true
+            return true;
+
+        } else {
+//            更新库存失败
+//            有可能amount数量太多了，将库存回滚
+            redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue());
+            return false;
+        }
+
+    }
+```
+
+存在问题:
+
+异步消息发送失败，扣减操作执行失败,，下单失败无法正确这些情况下无法正确回补库存。
+
+如果用户取消掉支付了，因为没有对应的库存操作记录，所以没有办法回滚对应的库存。
+
+无法知道当前数据库的数据是否是正确的，是因为异步消息没有到，没有正确的减1，还是因为数据库没有减成功，都是没有办法知道的。就是说目前缺少一条记录用来确定当前缓存库存的操作是什么状态，如何解决这一问题呢？:point_down:
+
+### 库存数据库最终一致性保证
+
+请见下章:small_red_triangle_down:
+
+# 第12章 交易优化技术之事务型消息
+
+本章目标：
+
+- 掌握异步化事务型消息模型
+- 掌握库存售罄模型
+
+## 引入事务型消息机制
+
+存在问题：
+
+```java
+ @Transactional   //事务，一但有一个出错就会就不会执行
+    public OrderModel createOrder(...){
+        //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
+        //2.落单减库存
+        Boolean result = itemService.decreaseStock(itemId, amount);
+        //3.订单入库
+        //......
+    }
+```
+
+```java
+//    库存扣减,根据商品id和商品购买数量扣减商品库存
+    @Override
+    @Transactional
+    public Boolean decreaseStock(Integer itemId, Integer amount) {
+//        返回值为影响的条目数，如果sql语句执行失败，返回值为0
+//        int affectRow = itemStockDOMapper.decreaseStock(itemId, amount);
+//        更新活动商品（减少）redis中的库存
+        long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue() * -1);
+//        result表示完成减库存操作后的数字
+        if (result >= 0) {
+//            更新库存成功
+
+//          producer发送消息
+            boolean mqResult = mqProducer.asyncReduceStock(itemId, amount);
+//            如果消息发送失败，首先将库存进行回滚，返回false
+            if (!mqResult) {
+                redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue());
+                return false;
+            }
+//            如果消息发送成功，返回true
+            return true;
+
+        } else {
+//            更新库存失败
+//            有可能amount数量太多了，将库存回滚
+            redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue());
+            return false;
+        }
+    }
+```
+
+将`decreaseStock`操作搞到了redis内存中，如果`long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue() * -1);`操作成功（redis扣减成功），异步消息也成功发送出去了，但是此时订单入库产生异常，返回给用户的结果是落单失败，这会使得库存白白损失掉了（异步消息不进行回滚？异步消息一旦发送出去后，会将数据库中的库存扣除），虽然不会造成超卖的现象，但是会发生少卖，库存减少了，但是没有那么多的订单。
+
+本质的问题在于**分布式事务**问题。`decreaseStock`操作在发送对应的异步消息之前，没有办法确定对应的其他操作，例如同一个事务中的订单入库操作，是否成功。
+
+**是否可以在事务中的逻辑执行成功后再发送异步消息呢？**
+
+修改ItemServiceImpl
+
+```java
+//    库存扣减,根据商品id和商品购买数量扣减商品库存
+    @Override
+    @Transactional
+    public boolean decreaseStock(Integer itemId, Integer amount) {
+//        返回值为影响的条目数，如果sql语句执行失败，返回值为0
+//        int affectRow = itemStockDOMapper.decreaseStock(itemId, amount);
+//        更新活动商品（减少）redis中的库存
+        long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue() * -1);
+//        result表示完成减库存操作后的数字
+        if (result >= 0) {
+//            更新库存成功,返回true
+            return true;
+
+        } else {
+//            更新库存失败
+//            有可能amount数量太多了，将库存回滚
+            increaseStock(itemId, amount);
+            return false;
+        }
+    }
+
+//    库存回补
+    @Override
+    public boolean increaseStock(Integer itemId, Integer amount) {
+        redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue());
+        return true;
+    }
+
+//异步更新库存
+    @Override
+    public boolean asyncDecreaseStock(Integer itemId, Integer amount) {
+        return mqProducer.asyncReduceStock(itemId, amount);
+    }
+```
+
+修改OrderServiceImpl
+
+```java
+@Override
+    @Transactional
+    public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount) throws BusinessException {
+        //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
+		//...
+        //2.落单减库存
+		//...
+        //3.订单入库
+		//...
+        
+        
+        //当该事务中的前面操作全部成功后才发送异步消息更新数据库中的库存
+        //异步更新库存
+        boolean mqResult = itemService.asyncDecreaseStock(itemId, amount);
+//        如果消息发送失败，将库存进行回滚,抛出异常
+        if (!mqResult) {
+            itemService.increaseStock(itemId,amount);
+            throw new BusinessException(EmBusinessError.MQ_SEND_FAIL);
+        }
+        
+        //4.返回前端
+        return orderModel;
+    }
+```
+
+还是存在问题：
+
+即使异步消息发送成功，还是可能在最后commit的时候因为网络原因或者是磁盘满了等原因产生了失败，这样库存还是被扣掉了。
+
+解决：当事务提交（commit）成功后再去执行某一个方法，这样就可以在事务commit之后再发送异步消息！修改OrderServiceImpl
+
+```java
+TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+            @SneakyThrows
+            @Override
+//            在最近一个Transactional成功commit后再执行方法
+            public void afterCommit() {
+                //当该事务中的前面操作全部成功后（commit后）才发送异步消息更新数据库中的库存
+                //异步更新库存
+                boolean mqResult = itemService.asyncDecreaseStock(itemId, amount);
+//                但是一旦异步消息发送失败就没有办法回滚库存了
+//        如果消息发送失败，将库存进行回滚,抛出异常
+//                if (!mqResult) {
+//                    itemService.increaseStock(itemId,amount);
+//                    throw new BusinessException(EmBusinessError.MQ_SEND_FAIL);
+//                }
+            }
+        });
+
+```
+
+但是还是存在问题：一旦异步消息发送失败就没有办法回滚库存了。
+
+### 事务性消息机制
+
+解决：使用RocketMQ Transactional，**保证数据库提交了，消息必定发送成功，数据库事务回滚了，消息必定不发送**。数据库状态未知，消息处理中，等待commit或者rollback。
+
+修改MqProducer
+
+```java
+@PostConstruct
+    public void init() throws MQClientException {
+//    做mq producer的初始化
+        producer = new DefaultMQProducer("producer_group");
+        producer.setNamesrvAddr(nameAddr);
+        producer.start();
+
+        transactionMQProducer = new TransactionMQProducer("transaction_producer_group");
+        transactionMQProducer.setNamesrvAddr(nameAddr);
+        transactionMQProducer.start();
+
+        transactionMQProducer.setTransactionListener(new TransactionListener() {
+            /**
+             * public enum LocalTransactionState {
+             *     COMMIT_MESSAGE:表示将prepare状态的消息转换为commit消息给消费方消费
+             *     ROLLBACK_MESSAGE：表示将prepare状态的消息撤回，等于没法
+             *     UNKNOW：未知现在是什么状态
+             *
+             *     private LocalTransactionState() {
+             *     }
+             * }
+             * */
+            @Override
+            public LocalTransactionState executeLocalTransaction(Message message, Object arg) {
+//                真正要做的事，创建订单
+                Integer userId = (Integer) ((Map) arg).get("userId");
+                Integer itemId = (Integer) ((Map) arg).get("itemId");
+                Integer promoId = (Integer) ((Map) arg).get("promoId");
+                Integer amount = (Integer) ((Map) arg).get("amount");
+
+                try {
+                    //只用订单创建成功了（commit后），才发送异步消息，否则不发送异步消息
+                    orderService.createOrder(userId, itemId, promoId, amount);
+                } catch (BusinessException e) {
+                    e.printStackTrace();
+                    return LocalTransactionState.ROLLBACK_MESSAGE;
+                }
+                return LocalTransactionState.COMMIT_MESSAGE;
+            }
+
+            @Override
+            public LocalTransactionState checkLocalTransaction(MessageExt messageExt) {
+                //根据是否扣减库存成功，来判断要返回COMMIT_MESSAGE，ROLLBACK_MESSAGE，UNKNOW
+                String jsonString = new String(messageExt.getBody());
+                Map<String, Integer> map = JSON.parseObject(jsonString, Map.class);
+                Integer itemId = map.get("itemId");
+                Integer amount = map.get("amount");
+                return null;
+            }
+        });
+    }
+
+    //  事务型同步库存扣减消息
+    public boolean transactionAsyncReduceStock(Integer userId, Integer promoId, Integer itemId, Integer amount) {
+        Map<String, Object> bodyMap = new HashMap<>();
+        bodyMap.put("itemId", itemId);
+        bodyMap.put("amount", amount);
+
+        Map<String, Object> argsMap = new HashMap<>();
+        argsMap.put("itemId", itemId);
+        argsMap.put("amount", amount);
+        argsMap.put("userId", userId);
+        argsMap.put("promoId", promoId);
+
+        Message message = new Message(topicName, "increase", JSON.toJSON(bodyMap).toString().getBytes(StandardCharsets.UTF_8));
+        TransactionSendResult sendResult = null;
+        try {
+            //transactionMQProducer发送事务型消息，消息发送出去后broker可以收到，
+            // 但是消息不是可被消费状态，而是一个prepare状态，这一状态下消息是不会被消费者看到的
+            //在prepare状态下会执行executeLocalTransaction方法
+            //就是说sendMessageInTransaction做两件事：
+            //向消息队列中投递prepare消息，维护在broker上面，然后在本地会执行executeLocalTransaction方法（真正要做的事，创建订单）
+            sendResult = transactionMQProducer.sendMessageInTransaction(message, argsMap);
+        } catch (MQClientException e) {
+            e.printStackTrace();
+            return false;
+        }
+
+        if (sendResult.getLocalTransactionState() == LocalTransactionState.ROLLBACK_MESSAGE) {
+            return false;
+        } else if (sendResult.getLocalTransactionState() == LocalTransactionState.COMMIT_MESSAGE) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+```
+
+修改ordercontroller
+
+```java
+//封装下单请求
+    @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType createOrder(...){
+//...
+
+//创建订单
+//OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, promoId, amount);
+        //调用事务型同步库存创建订单
+        boolean transactionAsyncReduceStock = mqProducer.transactionAsyncReduceStock(userModel.getId(), itemId, promoId, amount);
+        if (!transactionAsyncReduceStock) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR, "下单失败");
+        }
+
+        return CommonReturnType.create(null);
+    }
+//
+}
+```
+
+思考`checkLocalTransaction`函数对应的意义：当`createOrder`**操作耗时很长时**，例如在数据库压力比较大的时候耗时很长，这种情况下消息中间件broker中prepare的消息的状态一直没有改变（ROLLBACK_MESSAGE或COMMIT_MESSAGE）就会发起`checkLocalTransaction`函数的回调来判断库存扣减和下单是否是成功的，但是仅仅凭借`itemId`和`amount`是无法知道是哪一个订单(发送的异步消息是itemId和amont)，因此需要引入库存流水。
+
+
+
+## 操作流水
+
+数据类型：1.主业务类型：master data 2.操作型数据：log data
+
+新建表
+
+```mysql
+CREATE TABLE `stock_log`  (
+  `stock_log_id` varchar(64) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+  `item_id` int(0) NOT NULL DEFAULT 0,
+  `amount` int(0) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`stock_log_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_unicode_ci ROW_FORMAT = Dynamic;
+```
+
+MyBatis逆向工程
+
+```xml
+<table tableName="stock_log" domainObjectName="StockLogDO"
+               enableCountByExample="false"
+               enableUpdateByExample="false"
+               enableDeleteByExample="false"
+               enableSelectByExample="false"
+               selectByExampleQueryId="false"></table>
+```
+
+修改ItemService，创建stockLog
+
+```java
+@Override
+    @Transactional
+//    初始化对应的库存流水
+    //1表示初始状态，2表示下单成功，3表示下单回滚
+    public String initStockLog(Integer itemId, Integer amount) {
+        StockLogDO stockLogDO = new StockLogDO();
+        stockLogDO.setItemId(itemId);
+        stockLogDO.setAmount(amount);
+        stockLogDO.setStockLogId(UUID.randomUUID().toString().replace("-", ""));
+        stockLogDO.setStatus(1);
+
+        stockLogDOMapper.insertSelective(stockLogDO);
+        return stockLogDO.getStockLogId();
+    }
+```
+
+修改MqProducer，**将stockLogId添加到消息中发送出去**
+
+```java
+//  事务型同步库存扣减消息
+    public boolean transactionAsyncReduceStock(Integer userId, Integer promoId, Integer itemId, Integer amount, String stockLogId) {
+        Map<String, Object> bodyMap = new HashMap<>();
+        bodyMap.put("itemId", itemId);
+        bodyMap.put("amount", amount);
+        bodyMap.put("stockLogId", stockLogId);
+    //...
+    }
+```
+
+修改OrderController
+
+```java
+//封装下单请求
+@RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+@ResponseBody
+public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "promoId", required = false) Integer promoId,@RequestParam(name = "amount") Integer amount) throws BusinessException {
+       
+    //...
+    //加入库存流水init状态  -->下单之前初始化一条库存流水,然后库存流水就可以用于追踪异步扣减库存的消息
+        String stockLogId = itemService.initStockLog(itemId, amount);
+
+//        再去完成对应的下单事务型消息机制
+//创建订单,只有用户登录了才能够进行下单，用户的登录信息是在当前Session中获取的
+        //OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, promoId, amount);
+        boolean transactionAsyncReduceStock = mqProducer.transactionAsyncReduceStock(userModel.getId(), itemId, promoId, amount, stockLogId);
+        if (!transactionAsyncReduceStock) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR, "下单失败");
+        }
+
+        return CommonReturnType.create(null);
+    
+    //...
+    }
+
+
+```
+
+修改OrderServiceImpl，
+
+```java
+
+@Override
+    @Transactional
+    public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount, String stockLogId) throws BusinessException {   
+     //...
+        
+		//设置库存流水状态为成功
+        StockLogDO stockLogDO = stockLogDOMapper.selectByPrimaryKey(stockLogId);
+        if (stockLogDO == null) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR);
+        }
+        stockLogDO.setStatus(2);
+        stockLogDOMapper.updateByPrimaryKeySelective(stockLogDO);
+
+
+        //4.返回前端
+        return orderModel;
+    }
+
+```
+
+这确保了如果`MqProduce`中`orderService.createOrder(userId, itemId, promoId, amount,stockLogId);` 更新成功，库存流水状态为成功，无论`return`是否被发送，
+
+```java
+try {
+     //创建订单
+     orderService.createOrder(userId, itemId, promoId, amount,stockLogId);
+    } catch (BusinessException e) {
+    	 e.printStackTrace();
+         return LocalTransactionState.ROLLBACK_MESSAGE;
+    }
+return LocalTransactionState.COMMIT_MESSAGE;
+```
+
+修改MqProducer
+
+```java
+@Override
+            public LocalTransactionState executeLocalTransaction(Message message, Object arg) {
+//                真正要做的事，创建订单
+                Integer userId = (Integer) ((Map) arg).get("userId");
+                Integer itemId = (Integer) ((Map) arg).get("itemId");
+                Integer promoId = (Integer) ((Map) arg).get("promoId");
+                Integer amount = (Integer) ((Map) arg).get("amount");
+                String stockLogId = (String) ((Map) arg).get("stockLogId");
+
+                try {
+                    //创建订单
+                    orderService.createOrder(userId, itemId, promoId, amount, stockLogId);
+                    //根据checkLocalTransaction确定返回什么状态
+                } catch (BusinessException e) {
+                    e.printStackTrace();
+                    //设置对应的stockLogId为回滚状态
+                    StockLogDO stockLogDO = stockLogDOMapper.selectByPrimaryKey(stockLogId);
+                    stockLogDO.setStatus(3);
+                    stockLogDOMapper.updateByPrimaryKeySelective(stockLogDO);
+                    return LocalTransactionState.ROLLBACK_MESSAGE;
+                }
+                return LocalTransactionState.COMMIT_MESSAGE;
+            }
+
+@Override
+            public LocalTransactionState checkLocalTransaction(MessageExt messageExt) {
+                //根据是否扣减库存成功，来判断要返回COMMIT_MESSAGE，ROLLBACK_MESSAGE，UNKNOW
+                String jsonString = new String(messageExt.getBody());
+                Map<String, Integer> map = JSON.parseObject(jsonString, Map.class);
+                Integer itemId = map.get("itemId");
+                Integer amount = map.get("amount");
+                //在异步消息中拿到stockLogId，并获取对应的状态，
+                String stockLogId = String.valueOf(map.get("stockLogId"));
+                StockLogDO stockLogDO = stockLogDOMapper.selectByPrimaryKey(stockLogId);
+                if (stockLogDO == null) {
+                    return LocalTransactionState.UNKNOW;
+                }
+                //1表示初始状态，2表示下单成功，3表示下单回滚
+                if (stockLogDO.getStatus() == 2) {
+                    return LocalTransactionState.COMMIT_MESSAGE;
+                } else if (stockLogDO.getStatus() == 1) {
+                    return LocalTransactionState.UNKNOW;
+                }
+                //其他的状态设置为ROLLBACK_MESSAGE
+                return LocalTransactionState.ROLLBACK_MESSAGE;
+            }
+```
+
+问题：多加了库存流水查询和插入操作，好不容易将库存的状态移动到redis缓存中，又加了一个库存流水的操作，这不是性能等于没有任何提升？实际不然！原因是之前扣减库存的操作是在`itemId`，但是`stockLogId`是跟着``orderController`的`creatrOrder`，也就是说只有当用户下单之后才会插入下单记录，每一个交易都是一个单独的行锁，单独的行锁对数据库的状态的压力是非常小的，因为不需要有一个锁并发竞争的状态。
+
+## 业务场景决定高可用技术实现
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210612223854.png" style="zoom:30%;" />
+
+<img src="https://gitee.com/shilongshen/xiaoxingimagebad/raw/master/img/20210612224130.png" style="zoom:33%;" />
+
+## 库存售罄
+
+- 库存售罄标识
+- 售罄后不去操作后序流程
+- 售罄后通知各系统售罄
+- 回补上新
+
+修改itemServiceImpl
+
+```java
+public boolean decreaseStock(Integer itemId, Integer amount) {
+    //...
+    long result = redisTemplate.opsForValue().increment("promo_item_stock_" + itemId, amount.intValue() * -1);
+//        result表示完成减库存操作后的数字
+        if (result > 0) {
+//            更新库存成功
+//            如果消息发送成功，返回true
+            return true;
+        } else if (result == 0) {
+//打上库存已经售罄的标识
+            redisTemplate.opsForValue().set("promo_item_stock_" + itemId,"true");
+            return  true;
+        } else {
+//            更新库存失败
+//            有可能amount数量太多了，将库存回滚
+            increaseStock(itemId, amount);
+            return false;
+        }
+    //...
+}
+```
+
+
+
+修改orderController
+
+```java
+public CommonReturnType createOrder(...){
+    
+    //...
+     if (userModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户登录过期，userModel等于null");
+        }
+
+//判断是否库存已售罄，若对应的售罄key存在，则直接返回下单失败
+        if (redisTemplate.hasKey("promo_item_stock_" + itemId)) {
+            throw new BusinessException(EmBusinessError.STOCK_NOT_ENOUGH);
+        }
+//加入库存流水init状态  -->下单之前初始化一条库存流水,然后库存流水就可以用于追踪异步扣减库存的消息
+        String stockLogId = itemService.initStockLog(itemId, amount);
+    
+    //...
+    
+}
+```
+
+## 后置流程
+
+- 销量逻辑异步化
+- 交易逻辑异步化
+
+交易单逻辑异步化
+
+1.生成交易单sequence后直接返回
+
+2.前端轮询异步单状态
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

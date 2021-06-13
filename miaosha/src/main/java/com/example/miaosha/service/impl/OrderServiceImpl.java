@@ -2,8 +2,10 @@ package com.example.miaosha.service.impl;
 
 import com.example.miaosha.dao.OrderDOMapper;
 import com.example.miaosha.dao.SequenceDOMapper;
+import com.example.miaosha.dao.StockLogDOMapper;
 import com.example.miaosha.dataobject.OrderDO;
 import com.example.miaosha.dataobject.SequenceDO;
+import com.example.miaosha.dataobject.StockLogDO;
 import com.example.miaosha.error.BusinessException;
 import com.example.miaosha.error.EmBusinessError;
 import com.example.miaosha.service.ItemService;
@@ -12,11 +14,14 @@ import com.example.miaosha.service.UserService;
 import com.example.miaosha.service.model.ItemModel;
 import com.example.miaosha.service.model.OrderModel;
 import com.example.miaosha.service.model.UserModel;
+import lombok.SneakyThrows;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -33,20 +38,23 @@ public class OrderServiceImpl implements OrderService {
     private OrderDOMapper orderDOMapper;
     @Autowired
     private SequenceDOMapper sequenceDOMapper;
+    @Autowired
+    private StockLogDOMapper stockLogDOMapper;
 
 
     //    根据用户名，商品id,以及购买数量创建交易订单
     @Override
     @Transactional
-    public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount) throws BusinessException {
+    public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount, String stockLogId) throws BusinessException {
         //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
-        ItemModel itemModel = itemService.getItemById(itemId);//通过itemId获取itemModel
+//        ItemModel itemModel = itemService.getItemById(itemId);//通过itemId获取itemModel
+        ItemModel itemModel = itemService.getItemByIdInCache(itemId);//在redis缓存中通过itemId获取itemModel
 
         if (itemModel == null) {
             throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "商品不存在");
         }
 
-        UserModel userModel = userService.getUserById(userId);
+        UserModel userModel = userService.getUserByIdInCache(userId);//查询用户信息
         if (userModel == null) {
             throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户不存在");
         }
@@ -79,9 +87,9 @@ public class OrderServiceImpl implements OrderService {
         orderModel.setUserId(userId);
         orderModel.setItemId(itemId);
         orderModel.setAmount(amount);
-        if(promoId!=null){
+        if (promoId != null) {
             orderModel.setItemPrice(itemModel.getPromoModel().getPromoItemPrice());
-        }else{
+        } else {
             orderModel.setItemPrice(itemModel.getPrice());
         }
         orderModel.setPromoId(promoId);
@@ -94,6 +102,32 @@ public class OrderServiceImpl implements OrderService {
         orderDOMapper.insertSelective(orderDO);//将orderDO存入数据库表中
 //加上商品的销量
         itemService.insreaseSales(itemId, amount);
+
+//设置库存流水状态为成功
+        StockLogDO stockLogDO = stockLogDOMapper.selectByPrimaryKey(stockLogId);
+        if (stockLogDO == null) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR);
+        }
+        stockLogDO.setStatus(2);
+        stockLogDOMapper.updateByPrimaryKeySelective(stockLogDO);
+
+//        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+//            @SneakyThrows
+//            @Override
+////            在最近一个Transactional成功commit后再执行方法
+//            public void afterCommit() {
+//                //当该事务中的前面操作全部成功后才发送异步消息更新数据库中的库存
+//                //异步更新库存
+//                boolean mqResult = itemService.asyncDecreaseStock(itemId, amount);
+////                但是一旦异步消息发送失败就没有办法回滚库存了
+////        如果消息发送失败，将库存进行回滚,抛出异常
+////                if (!mqResult) {
+////                    itemService.increaseStock(itemId,amount);
+////                    throw new BusinessException(EmBusinessError.MQ_SEND_FAIL);
+////                }
+//            }
+//        });
+
         //4.返回前端
         return orderModel;
 
