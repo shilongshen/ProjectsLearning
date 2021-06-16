@@ -47,33 +47,34 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount, String stockLogId) throws BusinessException {
         //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
+        //1.1改为在生成令牌时进行校验
 //        ItemModel itemModel = itemService.getItemById(itemId);//通过itemId获取itemModel
         ItemModel itemModel = itemService.getItemByIdInCache(itemId);//在redis缓存中通过itemId获取itemModel
 
         if (itemModel == null) {
             throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "商品不存在");
         }
-
-        UserModel userModel = userService.getUserByIdInCache(userId);//查询用户信息
-        if (userModel == null) {
-            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户不存在");
-        }
-
-        if (amount <= 0 || amount > 99) {
-            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "数量信息不正确");
-        }
-        //校验活动信息
-        if (promoId != null) {
-            //(1)校验对应活动是否存在这个使用商品
-            //如果itemModel中PromoModel为null,说明该商品没有活动，
-            if (promoId.intValue() != itemModel.getPromoModel().getItemId()) {
-                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
-            }
-            //(2)活动还未开始
-            else if (itemModel.getPromoModel().getStatus() != 2) {
-                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
-            }
-        }
+//
+//        UserModel userModel = userService.getUserByIdInCache(userId);//查询用户信息
+//        if (userModel == null) {
+//            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户不存在");
+//        }
+//
+//        if (amount <= 0 || amount > 99) {
+//            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "数量信息不正确");
+//        }
+//        //校验活动信息
+//        if (promoId != null) {
+//            //(1)校验对应活动是否存在这个使用商品
+//            //如果itemModel中PromoModel为null,说明该商品没有活动，
+//            if (promoId.intValue() != itemModel.getPromoModel().getItemId()) {
+//                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
+//            }
+//            //(2)活动还未开始
+//            else if (itemModel.getPromoModel().getStatus() != 2) {
+//                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
+//            }
+//        }
 
         //2.落单减库存
         Boolean result = itemService.decreaseStock(itemId, amount);

@@ -4,7 +4,7 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 
 [课程]()
 
-## 项目环境
+# 项目环境
 
 - IDEA，maven，MySQL5.x
 
@@ -14,7 +14,7 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 
 
 
-##	第1章 课程介绍
+#	第1章 课程介绍
 
 **电商秒杀应用简介**
 
@@ -22,9 +22,9 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 > * 进入商品详情页获取秒杀商品详情
 > * 秒杀开始后进入下单确认页下单并支付成功
 
-##	第2章 应用SpringBoot完成基础项目搭建
+#	第2章 应用SpringBoot完成基础项目搭建
 
-###	2.1 使用IDEA创建maven项目
+##	2.1 使用IDEA创建maven项目
 
 1.new->project->maven项目->选择maven-archetype-quickstart
 
@@ -34,7 +34,7 @@ REDEME在[该博客](https://blog.csdn.net/m0_37657841/article/details/90524410)
 
 2.新建一个resources目录，作为资源文件目录，指定为Resource root
 
-###	2.2 引入SpringBoot依赖包实现简单的Web项目
+##	2.2 引入SpringBoot依赖包实现简单的Web项目
 
 进入官方文档https://spring.io/guides/gs/rest-service/
 
@@ -83,7 +83,7 @@ public class App
 
 再次启动App，访问localhost:8080
 
-###	2.3 Mybatis接入SpringBoot项目
+##	2.3 Mybatis接入SpringBoot项目
 
 1.SpringBoot的默认配置
 
@@ -167,7 +167,7 @@ server.port=8090
 </plugin>
 ```
 
-###	2.4 Mybatis自动生成器的使用方式
+##	2.4 Mybatis自动生成器的使用方式
 
 - 可自动生成封装数据的bean类
 - 可以自动生成dao接口
@@ -348,9 +348,9 @@ public class App {
 
 启动测试
 
-##	第3章 用户模块开发
+#	第3章 用户模块开发
 
-###	3.1 使用SpringMVC方式开发用户信息
+##	3.1 使用SpringMVC方式开发用户信息
 
 1.增加controller层、dao层
 
@@ -517,7 +517,7 @@ private UserVO convertFromModel(UserModel userModel) {
 }
 ```
 
-### 3.2 定义通用的返回对象——返回正确信息
+## 3.2 定义通用的返回对象——返回正确信息
 
 之前的程序一旦出错，只会返回一个白页，并没有错误信息，需要返回一个有意义的错误信息。
 
@@ -586,7 +586,7 @@ public CommonReturnType getUser(@RequestParam(name = "id") Integer id) {
 */
 ```
 
-### 3.3 定义通用的返回对象——返回错误信息
+## 3.3 定义通用的返回对象——返回错误信息
 
 统一管理错误信息
 
@@ -724,7 +724,7 @@ public class UserController extends BaseController{//继承BaseController
 }
 ```
 
-### 3.4 定义通用的返回对象——异常处理
+## 3.4 定义通用的返回对象——异常处理
 
 1.定义exceptionHandler解决未被controller层吸收的exception
 
@@ -754,7 +754,7 @@ public class BaseController {
 }
 ```
 
-### 3.5 用户模型管理——otp验证码获取
+## 3.5 用户模型管理——otp验证码获取
 
 通过手机号注册的流程：
 
@@ -793,7 +793,7 @@ public class UserController extends BaseController{
 
 测试，在控制台打印数据
 
-### 3.6 用户模型管理——Metronic模板简介
+## 3.6 用户模型管理——Metronic模板简介
 
 - 利用已有的模板来快速构建页面
 
@@ -803,7 +803,7 @@ public class UserController extends BaseController{
 
 前端文件保存在本地的哪个盘下都可以，因为是通过ajax来异步获取接口
 
-###	3.7 用户模型管理——getotp页面实现
+##	3.7 用户模型管理——getotp页面实现
 
 1.getotp.html：
 
@@ -889,7 +889,7 @@ getotp.html?_ijt=cqdae6hmhq9069c9s4muooakju:1 Access to XMLHttpRequest at 'http:
 
 跨域请求错误，只需要在UserController类上加一个注解`@CrossOrigin`即可
 
-###	3.8 用户模型管理——getotp页面美化
+##	3.8 用户模型管理——getotp页面美化
 
 1.引入样式表
 
@@ -921,7 +921,7 @@ getotp.html?_ijt=cqdae6hmhq9069c9s4muooakju:1 Access to XMLHttpRequest at 'http:
 </body>
 ```
 
-###	3.9 用户模型管理——用户注册功能实现
+##	3.9 用户模型管理——用户注册功能实现
 
 1.实现方法：用户注册接口
 
@@ -1385,7 +1385,7 @@ try {
 }
 ```
 
-###	3.9 用户模型管理——用户登录功能实现
+##	3.9 用户模型管理——用户登录功能实现
 
 1.UserController中的用户登录接口
 
@@ -1542,7 +1542,7 @@ UserDO selectByTelphone(String telphone);
     });
 ```
 
-###	3.10 优化校验规则
+##	3.10 优化校验规则
 
 校验规则
 
@@ -1721,11 +1721,11 @@ public class UserModel {
 
 
 
-##	第4章 商品模块开发
+#	第4章 商品模块开发
 
 包括了商品创建和商品的展示
 
-###	4.1 商品模型管理——商品创建
+##	4.1 商品模型管理——商品创建
 
 经验：在做任何一个业务之前，首先应该想好对应的商品模型是什么样的
 
@@ -2245,7 +2245,7 @@ public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
 
 
 
-###	4.2 商品模型管理——商品列表
+##	4.2 商品模型管理——商品列表
 
 *假设我们的需求是按照销量从高到低显示所有商品*
 
@@ -2304,7 +2304,7 @@ public CommonReturnType listItem() {
 }
 ```
 
-###	4.3 商品模型管理——商品列表页面
+##	4.3 商品模型管理——商品列表页面
 
 后端得到的json数据，前端负责页面的开发
 
@@ -2415,7 +2415,7 @@ listitem.html
 </html>
 ```
 
-###	4.4 商品模型管理——商品详情页面
+##	4.4 商品模型管理——商品详情页面
 
 getitem.html
 
@@ -2586,9 +2586,9 @@ getitem.html
 </html>
 ```
 
-##	第5章 交易模块开发
+#	第5章 交易模块开发
 
-###	5.1 交易模型管理——交易模型创建
+##	5.1 交易模型管理——交易模型创建
 
 1.先设计用户下单的交易模型
 
@@ -2647,7 +2647,7 @@ CREATE TABLE `order_info`  (
 
 在终端运行``` mvn mybatis-generator:generate```命令
 
-###	5.2 交易模型管理——交易下单
+##	5.2 交易模型管理——交易下单
 
 1.OrderService
 
@@ -3183,9 +3183,9 @@ public class OrderController extends BaseController {
 }
 ```
 
-##	第6章 秒杀模块开发
+#	第6章 秒杀模块开发
 
-###	6.1 秒杀模型管理——活动模型创建
+##	6.1 秒杀模型管理——活动模型创建
 
 1.使用joda-time
 
@@ -3252,7 +3252,7 @@ CREATE TABLE `promo`  (
        selectByExampleQueryId="false" ></table>
 ```
 
-###	6.2 秒杀模型管理——活动模型与商品模型结合
+##	6.2 秒杀模型管理——活动模型与商品模型结合
 
 1.service
 
@@ -5105,9 +5105,8 @@ function hasInit() {
 修改ItemServiceImpl
 
 ```java
-
 //    item以及promo model缓存模型,在缓存中通过id获取商品
-    @Override
+    @Override 
     public ItemModel getItemByIdInCache(Integer id) {
 //        在redis缓存中查询是否有对应的商品
         ItemModel itemModel = (ItemModel) redisTemplate.opsForValue().get("item_validate_" + id);
@@ -5947,15 +5946,468 @@ public CommonReturnType createOrder(...){
 
 2.前端轮询异步单状态
 
+# 第13章 流量削峰技术
+
+ 本章目标
+
+- 掌握秒杀令牌的原理和使用方式
+- 掌握秒杀大闸的原理和使用方式
+- 掌握队列泄洪的原理和使用方式
+
+目前存在的缺陷
+
+- 秒杀下单接口会被脚本不断的刷
+- 秒杀验证逻辑和秒杀下单接口强关联，代码冗余度高
+- 秒杀验证逻辑复杂，对交易系统产生无关联负载
+
+## 秒杀令牌
+
+秒杀令牌原理
+
+- 秒杀接口需要依靠令牌才能进入
+- 秒杀的令牌由秒杀活动模块负责生成
+- 秒杀活动对秒杀令牌生成全权处理，逻辑收口
+- 秒杀下单前需要线获得秒杀令牌
+
+修改promoServiceImpl
+
+```java
+@Override
+    public String generateStringKillToken(Integer promoId, Integer itemId, Integer userId) throws BusinessException {
+        //promoId获得promoDo
+        PromoDO promoDO = promoDOMapper.selectByPrimaryKey(promoId);
+        //dataobject-->model
+        PromoModel promoModel = convertFromDataObject(promoDO);
+        if (promoModel == null) {
+            return null;
+        }
+
+        //判断当前时间是否秒杀活动即将开始或正在进行
+        if (promoModel.getStartDate().isAfterNow()) {
+            promoModel.setStatus(1);//还未开始，开始时间在现在时间的后面
+        } else if (promoModel.getEndDate().isBeforeNow()) {
+            promoModel.setStatus(3);//已经结束，结束时间在现在时间的前面
+        } else {
+            promoModel.setStatus(2);//2表示进行中
+        }
+
+        //如果不是正在进行秒杀活动，就不生成令牌
+        if (promoModel.getStatus() != 2) {
+            return null;
+        }
+        //校验item是否存在
+        ItemModel itemModel = itemService.getItemByIdInCache(itemId);
+        if (itemModel == null) {
+            return null;
+        }
+        //校验用户是否存在
+        UserModel userModel = userService.getUserByIdInCache(userId);
+        if (userModel == null) {
+            return null;
+        }
 
 
+        //生成令牌，并设置在redis缓存中，并设置过期时间！
+        String token = UUID.randomUUID().toString().replace("-", "");
+        redisTemplate.opsForValue().set("promo_token_" + promoId+"_userid_"+userId+"_item_id"+itemId, token);
+        redisTemplate.expire("promo_token_" + promoId, 5, TimeUnit.MINUTES);
+        return token;
+    }
+```
+
+修改OrderController
+
+```java
+//生成秒杀令牌
+    @RequestMapping(value = "/generatetoken", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType generatetoken(@RequestParam(name = "itemId") Integer itemId,
+                                          @RequestParam(name = "promoId", required = true) Integer promoId
+    ) throws BusinessException {
+        //根据token获取用户信息
+        String token = httpServletRequest.getParameterMap().get("token")[0];
+        if (token == null) {
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);
+        }
+//通过token获取userModel,获取用户登录信息
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get(token);
+        if (userModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户登录过期，userModel等于null");
+        }
+
+        //获取秒杀访问令牌
+        String promoToken = promoService.generateStringKillToken(promoId, itemId, userModel.getId());
+        if (promoToken == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "生成令牌失败");
+        }
+        return CommonReturnType.create(promoToken);
+
+    }
+
+    //封装下单请求
+    @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "promoId", required = false) Integer promoId,
+                                        @RequestParam(name = "amount") Integer amount,
+                                        @RequestParam(name = "promoToken", required = false) String promoToken) throws BusinessException {
+//        获取tokenit
+        String token = httpServletRequest.getParameterMap().get("token")[0];
+        if (token == null) {
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN);
+        }
+//通过token获取userModel
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get(token);
+
+        if (userModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户登录过期，userModel等于null");
+        }
+
+        //校验秒杀令牌是否正确,与redis中的promoToken进行比较
+        if (promoId != null) {
+            String inRedisPromoToken = (String) redisTemplate.opsForValue().get("promo_token_" + promoId + "_userid_" + userModel.getId() + "_item_id" + itemId);
+            if (!StringUtils.equals(promoToken, inRedisPromoToken)) {
+                //如果不等就抛异常
+                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "秒杀令牌校验失败");
+            }
+        }
+        
+        //......
+    }
+```
+
+修改OrderServiceImpl
+
+```java
+//    根据用户名，商品id,以及购买数量创建交易订单
+    @Override
+    @Transactional
+    public OrderModel createOrder(Integer userId, Integer itemId, Integer promoId, Integer amount, String stockLogId) throws BusinessException {
+        //1.校验下单状态，下单的商品是否存在，用户是否合法，购买数量是否正确,以及校验活动信息
+        //1.1改为在生成令牌时进行校验
+//        ItemModel itemModel = itemService.getItemById(itemId);//通过itemId获取itemModel
+        ItemModel itemModel = itemService.getItemByIdInCache(itemId);//在redis缓存中通过itemId获取itemModel
+
+        if (itemModel == null) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "商品不存在");
+        }
+//
+//        UserModel userModel = userService.getUserByIdInCache(userId);//查询用户信息
+//        if (userModel == null) {
+//            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "用户不存在");
+//        }
+//
+//        if (amount <= 0 || amount > 99) {
+//            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "数量信息不正确");
+//        }
+//        //校验活动信息
+//        if (promoId != null) {
+//            //(1)校验对应活动是否存在这个使用商品
+//            //如果itemModel中PromoModel为null,说明该商品没有活动，
+//            if (promoId.intValue() != itemModel.getPromoModel().getItemId()) {
+//                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
+//            }
+//            //(2)活动还未开始
+//            else if (itemModel.getPromoModel().getStatus() != 2) {
+//                throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, "活动信息不正确");
+//            }
+//        }
+
+        //2.落单减库存
+        Boolean result = itemService.decreaseStock(itemId, amount);
+        if (!result) {
+            throw new BusinessException(EmBusinessError.STOCK_NOT_ENOUGH);
+        }
+
+        //...
+        return orderModel;
+
+    }
+```
+
+修改getitem.html，
+
+```html
+$(document).ready(function () {
+        // 获取商品详情
+        $.ajax({
+            type: "GET",
+            url: "http://" + g_host + "/item/get",
+            data: {
+                "id": getParam("id"),
+            },
+            xhrFields: {
+                withCredentials: true
+            },
+            success: function (data) {
+                if (data.status == "success") {
+                    g_itemVO = data.data;
+                    reloadDom();
+                    setInterval(reloadDom, 1000);//定时器
+                } else {
+                    alert("获取信息失败，原因为" + data.data.errMsg);
+                }
+            },
+            error: function (data) {
+                alert("获取信息失败，原因为" + data.responseText);
+            }
+        });
+
+        $("#createOrder").on("click", function () {
+            var token = window.localStorage["token"];
+            if (token == null) {
+                alert("没有登录，不能下单");
+                window.location.href = "login.html";//如果没有登录就直接跳到登录页
+                return false;
+            }
+//在发送createOrder之气那先调用令牌生成去生成对应的令牌
+            $.ajax({
+                type: "POST",
+                //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
+                url: "http://" + g_host + "/order/generatetoken?token=" + token,
+                contentType: "application/x-www-form-urlencoded",
+                data: {
+                    "itemId": g_itemVO.id,
+                    "promoId": g_itemVO.promoId,
+
+                },
+                xhrFields: {
+                    withCredentials: true
+                },
+                success: function (data) {
+                    if (data.status == "success") {
+                        var promoToken=data.data;
+                        $.ajax({
+                            type: "POST",
+                            //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
+                            url: "http://" + g_host + "/order/createorder?token=" + token,
+                            contentType: "application/x-www-form-urlencoded",
+                            data: {
+                                "itemId": g_itemVO.id,
+                                "promoId": g_itemVO.promoId,
+                                "amount": 1,//暂时写死为一件
+                                "promoToken":promoToken
+                            },
+                            xhrFields: {
+                                withCredentials: true
+                            },
+                            success: function (data) {
+                                if (data.status == "success") {
+                                    alert("下单成功");
+                                    window.location.reload();<!--刷新页面-->
+                                } else {
+                                    alert("下单失败，原因为" + data.data.errMsg);
+                                    //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
+                                    if (data.data.errCode == 200003) {
+                                        window.location.href = "login.html";
+                                    }
+                                }
+                            },
+                            error: function (data) {
+                                alert("下单失败，原因为" + data.responseText);
+                            }
+                        });
+                    } else {
+                        alert("获取令牌失败，原因为" + data.data.errMsg);
+                        //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
+                        if (data.data.errCode == 200003) {
+                            window.location.href = "login.html";
+                        }
+                    }
+                },
+                error: function (data) {
+                    alert("获取令牌失败，原因为" + data.responseText);
+                }
+            });
 
 
+        });
+    });
+```
+
+在OrderController和OrderService中校验用户信息、商品信息以及活动信息的操作全部移动到promoService中获取令牌的操作中，当校验完成后才往前端下发一个promoToken的一个秒杀令牌。在对应的OrderController层面，如果用户以一个特定的活动Id来下单，就根据promoId,userId加promoToken生成的秒杀令牌去重新获取一遍秒杀令牌或对应的一个信息，如果存在对应的秒杀令牌，则代表用户直接下单成功，若不存在说明是通过接口刷新过来的。使用这种方式使得秒杀令牌对应的一个生成校验的逻辑和下单逻辑做到了解耦！
+
+存在问题：
+
+秒杀令牌只要活动一开始就无限制生成，影响系统性能。
+
+## 秒杀大闸
+
+秒杀大闸原理
+
+- 依靠秒杀令牌的授权原理定制化发牌逻辑，做到大闸功能
+- 根据秒杀商品初始库存颁发对应数量令牌，控制大闸流量
+- 用户风控策略前置到秒杀令牌发放中
+- 库存售罄判断前置到秒杀令牌发放中
+
+将现有商品库存数量*3作为令牌总数，发完就不再颁发令牌。
+
+修改promoServiceImpl
+
+```java
+@Override
+    public void publishPromo(Integer promoId) {
+//        通过活动id获取活动
+        PromoDO promoDO = promoDOMapper.selectByPrimaryKey(promoId);
+        if (promoDO == null || promoDO.getItemId() == null || promoDO.getItemId().intValue() == 0) {
+            return;
+        }
+//        获取有活动的商品
+        ItemModel itemModel = itemService.getItemById(promoDO.getItemId());
+//        将库存同步到redis内
+        redisTemplate.opsForValue().set("promo_item_stock_" + itemModel.getId(), itemModel.getStock());
+
+//        将秒杀大闸限制数字设置到redis中
+        redisTemplate.opsForValue().set("promo_door_count_" + promoId, itemModel.getStock() * 3);
+
+    }
+
+@Override
+    public String generateStringKillToken(Integer promoId, Integer itemId, Integer userId) throws BusinessException {
+        //判断是否库存已售罄，若对应的售罄key存在，则直接返回下单失败
+        if (redisTemplate.hasKey("promo_item_stock_" + itemId)) {
+            return null;
+        }
+
+        //promoId获得promoDo
+        PromoDO promoDO = promoDOMapper.selectByPrimaryKey(promoId);
+        //dataobject-->model
+        PromoModel promoModel = convertFromDataObject(promoDO);
+        if (promoModel == null) {
+            return null;
+        }
+
+        //判断当前时间是否秒杀活动即将开始或正在进行
+        if (promoModel.getStartDate().isAfterNow()) {
+            promoModel.setStatus(1);//还未开始，开始时间在现在时间的后面
+        } else if (promoModel.getEndDate().isBeforeNow()) {
+            promoModel.setStatus(3);//已经结束，结束时间在现在时间的前面
+        } else {
+            promoModel.setStatus(2);//2表示进行中
+        }
+
+        //如果不是正在进行秒杀活动，就不生成令牌
+        if (promoModel.getStatus() != 2) {
+            return null;
+        }
+        //校验item是否存在
+        ItemModel itemModel = itemService.getItemByIdInCache(itemId);
+        if (itemModel == null) {
+            return null;
+        }
+        //校验用户是否存在
+        UserModel userModel = userService.getUserByIdInCache(userId);
+        if (userModel == null) {
+            return null;
+        }
+
+        //获取秒杀大闸的count数量,减1，如果库存小于0，就不再发布令牌
+        Long result = redisTemplate.opsForValue().increment("promo_door_count_" + promoId, -1);
+        if (result < 0) {
+            return null;
+        }
+
+        //生成令牌，并设置在redis缓存中，并设置过期时间！
+        String token = UUID.randomUUID().toString().replace("-", "");
+        redisTemplate.opsForValue().set("promo_token_" + promoId + "_userid_" + userId + "_item_id" + itemId, token);
+        redisTemplate.expire("promo_token_" + promoId, 5, TimeUnit.MINUTES);
+        return token;
+    }
+```
+
+存在问题
+
+- 浪涌流量涌入后系统无法应付
+- 多库存，多商品等令牌限制能力弱
+
+## 队列泄洪
+
+原理
+
+- 排队有些时候比并发更快（比如redis单线程模型，innodb mutex key等）
+- 依靠排队去限制并发流量
+- 依靠排队和下游拥塞窗口程度调整队列释放流量大小
+- 支付宝银行网关队列举例
+
+修改OrderController
+
+```java
+private ExecutorService executorService;
+
+    @PostConstruct
+    public void init() {//创建线程池
+        executorService = Executors.newFixedThreadPool(20);
+    }
 
 
+//封装下单请求
+    @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
+    @ResponseBody
+    public CommonReturnType createOrder(@RequestParam(name = "itemId") Integer itemId,
+                                        @RequestParam(name = "promoId", required = false) Integer promoId,
+                                        @RequestParam(name = "amount") Integer amount,
+                                        @RequestParam(name = "promoToken", required = false) String promoToken) throws BusinessException {
 
+//        ......
 
+        Future<Object> future = executorService.submit(new Callable<Object>() {
+            @Override
+            public Object call() throws Exception {
+                //加入库存流水init状态  -->下单之前初始化一条库存流水,然后库存流水就可以用于追踪异步扣减库存的消息
+                String stockLogId = itemService.initStockLog(itemId, amount);
+//        再去完成对应的下单事务型消息机制
+//创建订单,只有用户登录了才能够进行下单，用户的登录信息是在当前Session中获取的
+                //OrderModel orderModel = orderService.createOrder(userModel.getId(), itemId, promoId, amount);
+                boolean transactionAsyncReduceStock = mqProducer.transactionAsyncReduceStock(userModel.getId(), itemId, promoId, amount, stockLogId);
+                if (!transactionAsyncReduceStock) {
+                    throw new BusinessException(EmBusinessError.UNKNOWN_ERROR, "下单失败");
+                }
+                return null;
+            }
 
+        });
+
+        try {
+            future.get();
+        } catch (InterruptedException e) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR);
+        } catch (ExecutionException e) {
+            throw new BusinessException(EmBusinessError.UNKNOWN_ERROR);
+        }
+
+        return CommonReturnType.create(null);
+    }
+//
+}
+```
+
+利用20个线程大小的线程池，将库存流水的生成和异步事务型下单机制，加到对应线程的`call()`方法中，并且拿到对应的`future`对象之后阻塞自己等待返回，再返回前端的结果。
+
+同一个时间只有20个请求能被执行  -->  拥塞窗口为20的等待队列来队列化泄洪
+
+### 本地和分布式队列泄洪的区别
+
+- 本地：将队列维护在本地内存中
+
+  没有网络请求的消耗，性能比较高
+
+- 分布式：将队列设置到外部redis中
+
+  存在问题：
+
+  ​	性能问题，有网络请求的消耗，
+
+本地操作方式的话，我们限制每台机器设置20个拥塞窗口去完成对应的一个操作。那其实最最准确的一个队列泄洪的方式是将队列设置到外部，比如说redis内去完成集中化的一个分布式的泄流。比如说我们有100台机器，然后我们假设每台机器都设置20个队列，那我们拥塞窗口就是2000。但是，由于负载均衡的关系，我们很难保证说每一台机器都是能够平均收到对应的一个creatorder的请求。那如果说我们将这2000个大小的队列放在redis当中，由每次redis当中去排队对应的一个队列的实现，以及去获取对应的一个拥塞窗口的设置大小的话。那这种方式的话就是分布式的队列，其实这两种方式的话，各种方式实现是有利有弊的，并不是一定的分布式。可能初学者的同学会认定分布式的对应的队列会比本地的队列要好，因为他可以准确的管理整个集群的一个队列的大小状态。但是其实分布式的一个队列有一个最最严重的问题，就是它的性能问题。
+
+因为我们发送任何的一个请求都要发起一次对应的radis poll后的网络的一个消耗，并且要对radis产生对应的一个负载。那redis本身其实也是集中式的，虽然他有可以扩展的一些余地，但是他本质对应的那个队列也是集中式的队列。因此，他对应就变成了一个系统性能瓶颈，而且会有一个单点的问题。若redis队列挂了，那我们的队列数整个以上机制就失效了。
+
+本地队列有一个好处，就是它完全是维护在内存当中的。因此，它对应的没有一个网络请求的消耗，而且它的性能是非常非常高的。只要我们对应的JVM不挂，我们的应用服务器是存活的，那这个本地队列的功能就不会失效。
+
+因此，我们在真正的一个企业级的应用开发当中，还是强烈推荐大家使用本地的队列。因为本地的队列的性能以及高可用性导致了它对应的一个应用性跟广泛性。
+
+其实没有办法将我们每个对应本地服务器都能够做到完全均匀的接收这个CreatOrder这样的一个请求。因此，他对应会有一个负载稍微有点不均衡的这种问题，但是在高瓶颈，高可用性能的情况下，这些问题是可以被接受的。
+
+那当然做的最好的是，我们可以使用外部的集中式的分布式队列。当外部集中式的分布式队列的性能产生了问题，比如说他不可用或者他对应的返回请求的一个超时时间到我们不能接受的一个状态的时候。我们可以有一个降级的特别切回，使用本地的一个内存队列，那这种方式是一个企业型应用，高可用性的队列泄洪的实现方案。
 
 
 

@@ -129,25 +129,55 @@
                 window.location.href = "login.html";//如果没有登录就直接跳到登录页
                 return false;
             }
+//在发送createOrder之气那先调用令牌生成去生成对应的令牌
             $.ajax({
                 type: "POST",
                 //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
-                url: "http://" + g_host + "/order/createorder?token=" + token,
+                url: "http://" + g_host + "/order/generatetoken?token=" + token,
                 contentType: "application/x-www-form-urlencoded",
                 data: {
                     "itemId": g_itemVO.id,
                     "promoId": g_itemVO.promoId,
-                    "amount": 1,//暂时写死为一件
+
                 },
                 xhrFields: {
                     withCredentials: true
                 },
                 success: function (data) {
                     if (data.status == "success") {
-                        alert("下单成功");
-                        window.location.reload();<!--刷新页面-->
+                        var promoToken=data.data;
+                        $.ajax({
+                            type: "POST",
+                            //约定：如果用户登录或者需要登录态的请求，就将token拼接在一个url在中
+                            url: "http://" + g_host + "/order/createorder?token=" + token,
+                            contentType: "application/x-www-form-urlencoded",
+                            data: {
+                                "itemId": g_itemVO.id,
+                                "promoId": g_itemVO.promoId,
+                                "amount": 1,//暂时写死为一件
+                                "promoToken":promoToken
+                            },
+                            xhrFields: {
+                                withCredentials: true
+                            },
+                            success: function (data) {
+                                if (data.status == "success") {
+                                    alert("下单成功");
+                                    window.location.reload();<!--刷新页面-->
+                                } else {
+                                    alert("下单失败，原因为" + data.data.errMsg);
+                                    //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
+                                    if (data.data.errCode == 200003) {
+                                        window.location.href = "login.html";
+                                    }
+                                }
+                            },
+                            error: function (data) {
+                                alert("下单失败，原因为" + data.responseText);
+                            }
+                        });
                     } else {
-                        alert("下单失败，原因为" + data.data.errMsg);
+                        alert("获取令牌失败，原因为" + data.data.errMsg);
                         //如果下单失败的原因是'200003',说明用户还未登录，跳转到用户登录页面
                         if (data.data.errCode == 200003) {
                             window.location.href = "login.html";
@@ -155,9 +185,11 @@
                     }
                 },
                 error: function (data) {
-                    alert("下单失败，原因为" + data.responseText);
+                    alert("获取令牌失败，原因为" + data.responseText);
                 }
             });
+
+
         });
     });
 
